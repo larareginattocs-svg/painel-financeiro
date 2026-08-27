@@ -1269,6 +1269,8 @@
     rows += "<td>" + fmtDate(e.date) + "</td>";
     rows += "<td>" + escapeHtml(e.category) + "</td>";
     rows += '<td class="wrap">' + escapeHtml(e.description) + (badges ? ' <span class="row-badges">' + badges + "</span>" : "") + "</td>";
+    var nomeCargo = e.person ? (escapeHtml(e.person) + (e.role ? " — " + escapeHtml(e.role) : "")) : "—";
+    rows += '<td class="wrap">' + nomeCargo + "</td>";
     rows += '<td class="val num">' + fmtMoney(e.amount) + "</td>";
     rows += "<td>" + escapeHtml(e.payment || "—") + "</td>";
     rows += '<td><div class="row-actions">' +
@@ -1277,7 +1279,7 @@
       '<button class="row-del" data-del-entry="' + e.id + '" data-proj="' + p.id + '" title="Excluir lançamento">✕</button>' +
       "</div></td>";
     rows += "</tr>";
-    rows += '<tr class="entry-detail-row" data-detail-row="' + e.id + '" hidden><td colspan="6">' +
+    rows += '<tr class="entry-detail-row" data-detail-row="' + e.id + '" hidden><td colspan="7">' +
       '<div class="entry-detail-grid">' +
       '<div class="detail-item"><span class="detail-label">Fornecedor</span><span class="detail-value">' + escapeHtml(e.supplier || "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">CNPJ</span><span class="detail-value">' + (e.cnpjNA ? '<span class="cnpj-na">Não se aplica</span>' : escapeHtml(e.cnpj || "—")) + "</span></div>" +
@@ -1298,7 +1300,7 @@
 
   function entryRowsHtml(p, list) {
     if (list.length === 0) {
-      return '<tr class="empty-row"><td colspan="6">Nenhum lançamento encontrado.</td></tr>';
+      return '<tr class="empty-row"><td colspan="7">Nenhum lançamento encontrado.</td></tr>';
     }
     // Group by mês de referência — entries without one fall into a trailing "Sem mês definido" group.
     var groups = {};
@@ -1326,7 +1328,7 @@
         bulkControls = '<div class="bulk-month-row"><input type="month" data-bulk-month-input="' + p.id + '" />' +
           '<button class="btn subtle" type="button" data-bulk-month-apply="' + p.id + '" data-bulk-ids="' + ids + '">Aplicar mês a estes ' + items.length + (items.length === 1 ? " lançamento" : " lançamentos") + "</button></div>";
       }
-      rows += '<tr class="month-group-row"><td colspan="6"><div class="month-group-cell"><span class="month-group-label">' +
+      rows += '<tr class="month-group-row"><td colspan="7"><div class="month-group-cell"><span class="month-group-label">' +
         escapeHtml(label) + '</span><span class="month-group-total num">' + fmtMoney(subtotal) + "</span></div>" + bulkControls + "</td></tr>";
       items.forEach(function (e) { rows += entryRowHtml(p, e); });
     });
@@ -1497,7 +1499,7 @@
       '<div class="filter-count" data-filter-count="' + p.id + '">' + filterCountText(filtered.length, entriesSorted.length) + "</div>" +
 
       '<div class="table-wrap"><table><thead><tr>' +
-      "<th>Data</th><th>Categoria</th><th class=\"wrap\">Descrição / Nome e Cargo</th><th class=\"val\">Valor</th><th>Pagamento</th><th>Ações</th>" +
+      "<th>Data</th><th>Categoria</th><th class=\"wrap\">Descrição</th><th class=\"wrap\">Nome e Cargo</th><th class=\"val\">Valor</th><th>Pagamento</th><th>Ações</th>" +
       "</tr></thead><tbody data-entries-body=\"" + p.id + "\">" + rows + "</tbody></table></div>" +
 
       renderHistorySection(p) +
