@@ -868,6 +868,7 @@
       if (!Array.isArray(p.history)) p.history = [];
     });
     if (!Array.isArray(state.suppliers)) state.suppliers = [];
+    if (!Array.isArray(state.people)) state.people = [];
   }
 
   function findSupplierById(id) {
@@ -878,12 +879,22 @@
     if (!key) return null;
     return (state.suppliers || []).find(function (s) { return (s.name || "").trim().toLowerCase() === key; });
   }
+  function findPersonById(id) {
+    return (state.people || []).find(function (s) { return s.id === id; });
+  }
+  function findPersonByName(name) {
+    var key = String(name || "").trim().toLowerCase();
+    if (!key) return null;
+    return (state.people || []).find(function (s) { return (s.name || "").trim().toLowerCase() === key; });
+  }
+  var RH_CATEGORY = "Recursos Humanos";
 
   var activeTab = sessionStorage.getItem("painel-active-tab") || "resumo";
   var editing = null; // { pid, eid } — entry currently open in the form for editing
   var editingInstallment = null; // { pid, iid } — installment currently open in its mini-form
   var editingSupplier = null; // id of supplier currently open in the fornecedores form
-  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "installment" | "supplier" — awaiting confirm in the delete modal
+  var editingPerson = null; // id of person currently open in the recursos-humanos form
+  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "installment" | "supplier" | "person" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,dataUrl} (new file staged), null (explicit removal), or undefined (no change)
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
   var filterState = {}; // pid -> { text, category, payment, from, to } — view-local, not persisted
@@ -1026,6 +1037,7 @@
     var html = "";
     html += tabButton("resumo", "Resumo", null);
     html += tabButton("fornecedores", "Fornecedores", null);
+    html += tabButton("pessoas", "Recursos Humanos", null);
     state.projects.forEach(function (p) {
       var t = projectTotals(p);
       html += tabButton(p.id, p.name, t.status);
@@ -1043,6 +1055,7 @@
     var html = "";
     html += renderResumoPanel();
     html += renderFornecedoresPanel();
+    html += renderPessoasPanel();
     state.projects.forEach(function (p) { html += renderProjectPanel(p); });
     document.getElementById("panels").innerHTML = html;
   }
@@ -1183,6 +1196,53 @@
     );
   }
 
+  function renderPessoasPanel() {
+    var cls = "panel" + (activeTab === "pessoas" ? " active" : "");
+    var people = (state.people || []).slice().sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", "pt-BR"); });
+    var editPerson = editingPerson ? findPersonById(editingPerson) : null;
+
+    var rows;
+    if (people.length === 0) {
+      rows = '<tr class="empty-row"><td colspan="3">Nenhuma pessoa cadastrada ainda.</td></tr>';
+    } else {
+      rows = people.map(function (s) {
+        return "<tr" + (editingPerson === s.id ? ' class="editing-row"' : "") + ">" +
+          "<td>" + escapeHtml(s.name) + "</td>" +
+          "<td>" + escapeHtml(s.role || "—") + "</td>" +
+          '<td><div class="row-actions">' +
+          '<button class="row-edit" data-edit-person="' + s.id + '" title="Editar pessoa">✎</button>' +
+          '<button class="row-del" data-del-person="' + s.id + '" title="Excluir pessoa">✕</button>' +
+          "</div></td>" +
+          "</tr>";
+      }).join("");
+    }
+
+    return (
+      '<div class="' + cls + '" data-panel="pessoas">' +
+      '<div class="form-card' + (editPerson ? " editing" : "") + '">' +
+      "<h3>Cadastrar pessoa" + (editPerson ? '<span class="edit-flag">Editando pessoa</span>' : "") + "</h3>" +
+      '<div data-person-form>' +
+      '<div class="form-grid-details">' +
+      '<div class="field full fornecedor-cnpj-row">' +
+      '<div class="field-inline"><label>Nome</label><input type="text" data-pf="name" placeholder="Nome da pessoa" value="' + escapeHtml(editPerson ? editPerson.name : "") + '" /></div>' +
+      '<div class="field-inline"><label>Cargo</label><input type="text" data-pf="role" list="cargoOptions" placeholder="Selecione ou digite um cargo" value="' + escapeHtml(editPerson ? (editPerson.role || "") : "") + '" /></div>' +
+      "</div>" +
+      "</div>" +
+      '<div class="form-actions-row">' +
+      (editPerson ? '<button class="btn subtle" type="button" data-cancel-edit-person>Cancelar edição</button>' : "") +
+      '<button class="btn" type="button" data-submit-person>' + (editPerson ? "Salvar alterações" : "Adicionar pessoa") + "</button>" +
+      "</div>" +
+      "</div>" +
+      "</div>" +
+
+      '<div class="section-title-row"><div class="section-title">Pessoas cadastradas</div></div>' +
+      '<div class="table-wrap"><table><thead><tr>' +
+      "<th>Nome</th><th>Cargo</th><th>Ações</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "</div>"
+    );
+  }
+
   function filterEntries(entries, f) {
     if (!f) return entries;
     return entries.filter(function (e) {
@@ -1191,7 +1251,7 @@
       if (f.from && (e.date || "") < f.from) return false;
       if (f.to && (e.date || "") > f.to) return false;
       if (f.text) {
-        var hay = ((e.description || "") + " " + (e.notes || "") + " " + (e.supplier || "") + " " + (e.cnpj || "") + " " + (e.category || "")).toLowerCase();
+        var hay = ((e.description || "") + " " + (e.notes || "") + " " + (e.supplier || "") + " " + (e.cnpj || "") + " " + (e.category || "") + " " + (e.person || "") + " " + (e.role || "")).toLowerCase();
         if (hay.indexOf(f.text.toLowerCase()) === -1) return false;
       }
       return true;
@@ -1220,6 +1280,8 @@
       '<div class="entry-detail-grid">' +
       '<div class="detail-item"><span class="detail-label">Fornecedor</span><span class="detail-value">' + escapeHtml(e.supplier || "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">CNPJ</span><span class="detail-value">' + (e.cnpjNA ? '<span class="cnpj-na">Não se aplica</span>' : escapeHtml(e.cnpj || "—")) + "</span></div>" +
+      '<div class="detail-item"><span class="detail-label">Pessoa (RH)</span><span class="detail-value">' + escapeHtml(e.person || "—") + "</span></div>" +
+      '<div class="detail-item"><span class="detail-label">Cargo</span><span class="detail-value">' + escapeHtml(e.role || "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">Mês de referência</span><span class="detail-value">' + fmtMonth(e.refMonth) + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">Link</span><span class="detail-value">' + (e.link ? '<a class="row-link" href="' + escapeHtml(e.link) + '" target="_blank" rel="noopener noreferrer">🔗 Abrir link</a>' : "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">Anexo</span><span class="detail-value">' + (hasAttach ? '<button class="row-attach" data-toggle-attach="' + e.id + '" data-proj="' + p.id + '" title="' + escapeHtml(e.attachment.name) + '">📎 Ver</button>' : "—") + "</span></div>" +
@@ -1310,7 +1372,8 @@
     var received = installmentsTotal(p);
     var cashBalance = received - t.spent;
     var editEntry = (editing && editing.pid === p.id) ? p.entries.find(function (e) { return e.id === editing.eid; }) : null;
-    var hasExtraDetails = !!(editEntry && (editEntry.refMonth || editEntry.supplier || editEntry.cnpj || editEntry.cnpjNA || editEntry.notes || editEntry.link || (editEntry.attachment && editEntry.attachment.dataUrl)));
+    var isRH = !!(editEntry && editEntry.category === RH_CATEGORY);
+    var hasExtraDetails = !!(editEntry && (editEntry.refMonth || editEntry.supplier || editEntry.cnpj || editEntry.cnpjNA || editEntry.notes || editEntry.link || editEntry.person || editEntry.role || isRH || (editEntry.attachment && editEntry.attachment.dataUrl)));
     var matchedSupplier = editEntry && editEntry.supplier ? findSupplierByName(editEntry.supplier) : null;
     var supplierSelectValue = matchedSupplier ? matchedSupplier.id : (editEntry && editEntry.supplier ? "__other__" : "");
     var supplierOtherVisible = supplierSelectValue === "__other__";
@@ -1320,6 +1383,14 @@
     }).join("");
     var entryCnpjValue = supplierCnpjLocked ? (matchedSupplier.cnpjNA ? "" : (matchedSupplier.cnpj || "")) : (editEntry ? (editEntry.cnpj || "") : "");
     var entryCnpjNA = supplierCnpjLocked ? !!matchedSupplier.cnpjNA : !!(editEntry && editEntry.cnpjNA);
+    var matchedPerson = editEntry && editEntry.person ? findPersonByName(editEntry.person) : null;
+    var personSelectValue = matchedPerson ? matchedPerson.id : (editEntry && editEntry.person ? "__other__" : "");
+    var personOtherVisible = personSelectValue === "__other__";
+    var roleLocked = !!matchedPerson;
+    var personOptionsHtml = (state.people || []).slice().sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", "pt-BR"); }).map(function (s) {
+      return '<option value="' + s.id + '"' + (personSelectValue === s.id ? " selected" : "") + ">" + escapeHtml(s.name) + (s.role ? " — " + escapeHtml(s.role) : "") + "</option>";
+    }).join("");
+    var entryRoleValue = roleLocked ? (matchedPerson.role || "") : (editEntry ? (editEntry.role || "") : "");
     var payOptions = PAYMENTS.map(function (c) {
       var sel = editEntry && editEntry.payment === c ? " selected" : "";
       return '<option value="' + escapeHtml(c) + '"' + sel + ">" + escapeHtml(c) + "</option>";
@@ -1372,6 +1443,19 @@
       '<summary>Detalhes adicionais <span class="chev">▶</span></summary>' +
       '<div class="form-grid-details">' +
       '<div class="field"><label>Mês de referência</label><input type="month" data-f="refMonth" value="' + escapeHtml(editEntry ? (editEntry.refMonth || "") : "") + '" /></div>' +
+      '<div class="field full fornecedor-cnpj-row"' + (isRH ? "" : " hidden") + ' data-rh-fields>' +
+      '<div class="field-inline"><label>Pessoa (Recursos Humanos)</label>' +
+      '<select data-f="personId">' +
+      '<option value=""' + (personSelectValue === "" ? " selected" : "") + ">— Nenhum —</option>" +
+      personOptionsHtml +
+      '<option value="__other__"' + (personOtherVisible ? " selected" : "") + ">Outro (digitar manualmente)</option>" +
+      "</select>" +
+      '<input type="text" data-f="personOther" placeholder="Nome da pessoa" style="margin-top:6px"' + (personOtherVisible ? "" : " hidden") + ' value="' + escapeHtml(editEntry && !matchedPerson ? (editEntry.person || "") : "") + '" />' +
+      "</div>" +
+      '<div class="field-inline"><label>Cargo' + (roleLocked ? ' <span class="cnpj-locked-hint">(do cadastro)</span>' : "") + '</label>' +
+      '<input type="text" data-f="role" list="cargoOptions" placeholder="Selecione ou digite um cargo"' + (roleLocked ? " disabled" : "") + ' value="' + escapeHtml(entryRoleValue) + '" />' +
+      "</div>" +
+      "</div>" +
       '<div class="field full fornecedor-cnpj-row">' +
       '<div class="field-inline"><label>Fornecedor</label>' +
       '<select data-f="supplierId">' +
@@ -1557,11 +1641,11 @@
   // ---------------- Export (CSV) ----------------
 
   function entriesCsv(rowsData) {
-    var header = ["Projeto", "Data", "Mês de referência", "Categoria", "Descrição", "Fornecedor", "CNPJ", "Valor", "Pagamento", "Observações", "Link"].map(csvField).join(";");
+    var header = ["Projeto", "Data", "Mês de referência", "Categoria", "Descrição", "Fornecedor", "CNPJ", "Pessoa (RH)", "Cargo", "Valor", "Pagamento", "Observações", "Link"].map(csvField).join(";");
     var lines = [header];
     rowsData.forEach(function (r) {
       var cnpjText = r.cnpjNA ? "Não se aplica" : (r.cnpj || "");
-      lines.push([r.projectName, fmtDate(r.date), fmtMonth(r.refMonth), r.category, r.description, r.supplier || "", cnpjText, csvNum(r.amount), r.payment || "", r.notes || "", r.link || ""].map(csvField).join(";"));
+      lines.push([r.projectName, fmtDate(r.date), fmtMonth(r.refMonth), r.category, r.description, r.supplier || "", cnpjText, r.person || "", r.role || "", csvNum(r.amount), r.payment || "", r.notes || "", r.link || ""].map(csvField).join(";"));
     });
     return "﻿" + lines.join("\r\n");
   }
@@ -1588,7 +1672,7 @@
     var p = state.projects.find(function (x) { return x.id === pid; });
     if (!p) return;
     var rowsData = p.entries.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).map(function (e) {
-      return { projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA };
+      return { projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role };
     });
     exportRows(rowsData, "lancamentos-" + slug(p.name));
   }
@@ -1597,7 +1681,7 @@
     var rowsData = [];
     state.projects.forEach(function (p) {
       p.entries.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).forEach(function (e) {
-        rowsData.push({ projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA });
+        rowsData.push({ projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role });
       });
     });
     exportRows(rowsData, "lancamentos-todos-os-projetos");
@@ -1702,6 +1786,22 @@
         } else {
           supplier = ""; cnpjNA = false; cnpj = "";
         }
+        var person, role;
+        if (category.trim() === RH_CATEGORY) {
+          var personIdVal = get("personId");
+          if (personIdVal === "__other__") {
+            person = get("personOther").trim();
+            role = get("role").trim();
+          } else if (personIdVal) {
+            var chosenPerson = findPersonById(personIdVal);
+            person = chosenPerson ? chosenPerson.name : "";
+            role = chosenPerson ? (chosenPerson.role || "") : "";
+          } else {
+            person = ""; role = get("role").trim();
+          }
+        } else {
+          person = ""; role = "";
+        }
         if (!date || !category || !description || !amount || amount <= 0) {
           form.style.outline = "1px solid var(--danger)";
           setTimeout(function () { form.style.outline = ""; }, 900);
@@ -1719,6 +1819,8 @@
             if (supplier) existing.supplier = supplier; else delete existing.supplier;
             existing.cnpjNA = cnpjNA;
             if (cnpj) existing.cnpj = cnpj; else delete existing.cnpj;
+            if (person) existing.person = person; else delete existing.person;
+            if (role) existing.role = role; else delete existing.role;
             if (attachment) existing.attachment = attachment; else delete existing.attachment;
             logHistory(p, "edit", "Lançamento editado: " + description + " (" + fmtMoney(amount) + ")");
           }
@@ -1730,6 +1832,8 @@
           if (supplier) newEntry.supplier = supplier;
           if (cnpjNA) newEntry.cnpjNA = true;
           if (cnpj) newEntry.cnpj = cnpj;
+          if (person) newEntry.person = person;
+          if (role) newEntry.role = role;
           if (attachment) newEntry.attachment = attachment;
           p.entries.push(newEntry);
           logHistory(p, "add", "Lançamento adicionado: " + description + " (" + fmtMoney(amount) + ")");
@@ -1755,6 +1859,43 @@
         if (!cnpjInput) return;
         cnpjInput.disabled = checkbox.checked;
         if (checkbox.checked) cnpjInput.value = "";
+      });
+    });
+
+    panels.querySelectorAll('[data-f="category"]').forEach(function (input) {
+      input.addEventListener("input", function () {
+        var form = input.closest("[data-entry-form]");
+        if (!form) return;
+        var rhFields = form.querySelector("[data-rh-fields]");
+        if (!rhFields) return;
+        var isRHNow = input.value.trim() === RH_CATEGORY;
+        rhFields.hidden = !isRHNow;
+        if (isRHNow) {
+          var details = form.querySelector("details.entry-details");
+          if (details) details.open = true;
+        }
+      });
+    });
+
+    panels.querySelectorAll('[data-f="personId"]').forEach(function (select) {
+      select.addEventListener("change", function () {
+        var form = select.closest("[data-entry-form]");
+        if (!form) return;
+        var otherInput = form.querySelector('[data-f="personOther"]');
+        var roleInput = form.querySelector('[data-f="role"]');
+        var val = select.value;
+        if (val === "__other__") {
+          if (otherInput) otherInput.hidden = false;
+          if (roleInput) roleInput.disabled = false;
+        } else if (val) {
+          if (otherInput) otherInput.hidden = true;
+          var person = findPersonById(val);
+          if (person && roleInput) roleInput.value = person.role || "";
+          if (roleInput) roleInput.disabled = true;
+        } else {
+          if (otherInput) otherInput.hidden = true;
+          if (roleInput) roleInput.disabled = false;
+        }
       });
     });
 
@@ -1981,6 +2122,66 @@
         document.getElementById("confirmOverlay").classList.add("open");
       });
     });
+
+    var submitPersonBtn = panels.querySelector("[data-submit-person]");
+    if (submitPersonBtn) {
+      submitPersonBtn.addEventListener("click", function () {
+        var form = panels.querySelector("[data-person-form]");
+        var get = function (f) { return form.querySelector('[data-pf="' + f + '"]').value; };
+        var name = get("name").trim();
+        var role = get("role").trim();
+        if (!name) {
+          form.style.outline = "1px solid var(--danger)";
+          setTimeout(function () { form.style.outline = ""; }, 900);
+          return;
+        }
+        if (!Array.isArray(state.people)) state.people = [];
+        if (editingPerson) {
+          var existing = findPersonById(editingPerson);
+          if (existing) {
+            existing.name = name;
+            if (role) existing.role = role; else delete existing.role;
+          }
+          editingPerson = null;
+        } else {
+          var newPerson = { id: "pes" + Date.now() + Math.floor(Math.random() * 1000), name: name };
+          if (role) newPerson.role = role;
+          state.people.push(newPerson);
+        }
+        renderAll();
+        persist();
+      });
+    }
+
+    var cancelEditPersonBtn = panels.querySelector("[data-cancel-edit-person]");
+    if (cancelEditPersonBtn) {
+      cancelEditPersonBtn.addEventListener("click", function () {
+        editingPerson = null;
+        renderAll();
+      });
+    }
+
+    panels.querySelectorAll("[data-edit-person]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingPerson = btn.getAttribute("data-edit-person");
+        renderAll();
+        var form = document.querySelector("[data-person-form]");
+        if (form) form.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+
+    panels.querySelectorAll("[data-del-person]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid2 = btn.getAttribute("data-del-person");
+        var person = findPersonById(pid2);
+        if (!person) return;
+        pendingDelete = { pid: null, id: pid2, kind: "person" };
+        document.getElementById("confirmTitle").textContent = "Excluir pessoa";
+        var msg = document.getElementById("confirmMessage");
+        msg.textContent = "Excluir “" + person.name + "”? Lançamentos que já usam essa pessoa não serão alterados. Essa ação não pode ser desfeita.";
+        document.getElementById("confirmOverlay").classList.add("open");
+      });
+    });
   }
 
   function bindEntryRowActions(container) {
@@ -2147,6 +2348,14 @@
       pendingDelete = null;
       state.suppliers = (state.suppliers || []).filter(function (x) { return x.id !== id; });
       if (editingSupplier === id) editingSupplier = null;
+      renderAll();
+      persist();
+      return;
+    }
+    if (kind === "person") {
+      pendingDelete = null;
+      state.people = (state.people || []).filter(function (x) { return x.id !== id; });
+      if (editingPerson === id) editingPerson = null;
       renderAll();
       persist();
       return;
