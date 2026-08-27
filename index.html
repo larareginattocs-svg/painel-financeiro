@@ -1889,6 +1889,10 @@
           var person = findPersonById(val);
           if (person && roleInput) roleInput.value = person.role || "";
           if (roleInput) roleInput.disabled = true;
+          var descInput = form.querySelector('[data-f="description"]');
+          if (person && descInput && !descInput.value.trim()) {
+            descInput.value = (person.role ? person.role + " — " : "") + person.name;
+          }
         } else {
           if (otherInput) otherInput.hidden = true;
           if (roleInput) roleInput.disabled = false;
@@ -2495,4 +2499,3 @@
   }
 })();
 </script>
-
