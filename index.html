@@ -448,6 +448,8 @@
   .cnpj-na-toggle { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-soft); white-space: nowrap; font-weight: 600; cursor: pointer; }
   .cnpj-na-toggle input { width: auto; cursor: pointer; }
   .cnpj-na { color: var(--ink-faint); font-style: italic; }
+  .cnpj-locked-hint { text-transform: none; font-weight: 500; letter-spacing: normal; color: var(--ink-faint); font-size: 10.5px; }
+  tr.editing-row { background: var(--surface-sunken); }
 
   .btn {
     appearance: none;
@@ -865,12 +867,23 @@
       if (!Array.isArray(p.installments)) p.installments = [];
       if (!Array.isArray(p.history)) p.history = [];
     });
+    if (!Array.isArray(state.suppliers)) state.suppliers = [];
+  }
+
+  function findSupplierById(id) {
+    return (state.suppliers || []).find(function (s) { return s.id === id; });
+  }
+  function findSupplierByName(name) {
+    var key = String(name || "").trim().toLowerCase();
+    if (!key) return null;
+    return (state.suppliers || []).find(function (s) { return (s.name || "").trim().toLowerCase() === key; });
   }
 
   var activeTab = sessionStorage.getItem("painel-active-tab") || "resumo";
   var editing = null; // { pid, eid } — entry currently open in the form for editing
   var editingInstallment = null; // { pid, iid } — installment currently open in its mini-form
-  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "installment" — awaiting confirm in the delete modal
+  var editingSupplier = null; // id of supplier currently open in the fornecedores form
+  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "installment" | "supplier" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,dataUrl} (new file staged), null (explicit removal), or undefined (no change)
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
   var filterState = {}; // pid -> { text, category, payment, from, to } — view-local, not persisted
@@ -1012,6 +1025,7 @@
   function renderTabs() {
     var html = "";
     html += tabButton("resumo", "Resumo", null);
+    html += tabButton("fornecedores", "Fornecedores", null);
     state.projects.forEach(function (p) {
       var t = projectTotals(p);
       html += tabButton(p.id, p.name, t.status);
@@ -1028,6 +1042,7 @@
   function renderPanels() {
     var html = "";
     html += renderResumoPanel();
+    html += renderFornecedoresPanel();
     state.projects.forEach(function (p) { html += renderProjectPanel(p); });
     document.getElementById("panels").innerHTML = html;
   }
@@ -1114,6 +1129,57 @@
       "<th>Fornecedor</th><th class=\"val\">Nº lançamentos</th><th class=\"val\">Total gasto</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
       "</details>"
+    );
+  }
+
+  function renderFornecedoresPanel() {
+    var cls = "panel" + (activeTab === "fornecedores" ? " active" : "");
+    var suppliers = (state.suppliers || []).slice().sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", "pt-BR"); });
+    var editSupplier = editingSupplier ? findSupplierById(editingSupplier) : null;
+
+    var rows;
+    if (suppliers.length === 0) {
+      rows = '<tr class="empty-row"><td colspan="3">Nenhum fornecedor cadastrado ainda.</td></tr>';
+    } else {
+      rows = suppliers.map(function (s) {
+        var cnpjText = s.cnpjNA ? '<span class="cnpj-na">Não se aplica</span>' : escapeHtml(s.cnpj || "—");
+        return "<tr" + (editingSupplier === s.id ? ' class="editing-row"' : "") + ">" +
+          "<td>" + escapeHtml(s.name) + "</td>" +
+          "<td>" + cnpjText + "</td>" +
+          '<td><div class="row-actions">' +
+          '<button class="row-edit" data-edit-supplier="' + s.id + '" title="Editar fornecedor">✎</button>' +
+          '<button class="row-del" data-del-supplier="' + s.id + '" title="Excluir fornecedor">✕</button>' +
+          "</div></td>" +
+          "</tr>";
+      }).join("");
+    }
+
+    return (
+      '<div class="' + cls + '" data-panel="fornecedores">' +
+      '<div class="form-card' + (editSupplier ? " editing" : "") + '">' +
+      "<h3>Cadastrar fornecedor" + (editSupplier ? '<span class="edit-flag">Editando fornecedor</span>' : "") + "</h3>" +
+      '<div data-supplier-form>' +
+      '<div class="form-grid-details">' +
+      '<div class="field full fornecedor-cnpj-row">' +
+      '<div class="field-inline"><label>Nome do fornecedor</label><input type="text" data-sf="name" placeholder="Nome ou razão social" value="' + escapeHtml(editSupplier ? editSupplier.name : "") + '" /></div>' +
+      '<div class="field-inline"><label>CNPJ</label><div class="cnpj-input-wrap">' +
+      '<input type="text" data-sf="cnpj" placeholder="00.000.000/0000-00"' + (editSupplier && editSupplier.cnpjNA ? " disabled" : "") + ' value="' + escapeHtml(editSupplier ? (editSupplier.cnpj || "") : "") + '" />' +
+      '<label class="cnpj-na-toggle"><input type="checkbox" data-sf="cnpjNotApplicable"' + (editSupplier && editSupplier.cnpjNA ? " checked" : "") + ' /> Não se aplica</label>' +
+      "</div></div>" +
+      "</div>" +
+      "</div>" +
+      '<div class="form-actions-row">' +
+      (editSupplier ? '<button class="btn subtle" type="button" data-cancel-edit-supplier>Cancelar edição</button>' : "") +
+      '<button class="btn" type="button" data-submit-supplier>' + (editSupplier ? "Salvar alterações" : "Adicionar fornecedor") + "</button>" +
+      "</div>" +
+      "</div>" +
+      "</div>" +
+
+      '<div class="section-title-row"><div class="section-title">Fornecedores cadastrados</div></div>' +
+      '<div class="table-wrap"><table><thead><tr>' +
+      "<th>Fornecedor</th><th>CNPJ</th><th>Ações</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "</div>"
     );
   }
 
@@ -1245,6 +1311,15 @@
     var cashBalance = received - t.spent;
     var editEntry = (editing && editing.pid === p.id) ? p.entries.find(function (e) { return e.id === editing.eid; }) : null;
     var hasExtraDetails = !!(editEntry && (editEntry.refMonth || editEntry.supplier || editEntry.cnpj || editEntry.cnpjNA || editEntry.notes || editEntry.link || (editEntry.attachment && editEntry.attachment.dataUrl)));
+    var matchedSupplier = editEntry && editEntry.supplier ? findSupplierByName(editEntry.supplier) : null;
+    var supplierSelectValue = matchedSupplier ? matchedSupplier.id : (editEntry && editEntry.supplier ? "__other__" : "");
+    var supplierOtherVisible = supplierSelectValue === "__other__";
+    var supplierCnpjLocked = !!matchedSupplier;
+    var supplierOptionsHtml = (state.suppliers || []).slice().sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", "pt-BR"); }).map(function (s) {
+      return '<option value="' + s.id + '"' + (supplierSelectValue === s.id ? " selected" : "") + ">" + escapeHtml(s.name) + "</option>";
+    }).join("");
+    var entryCnpjValue = supplierCnpjLocked ? (matchedSupplier.cnpjNA ? "" : (matchedSupplier.cnpj || "")) : (editEntry ? (editEntry.cnpj || "") : "");
+    var entryCnpjNA = supplierCnpjLocked ? !!matchedSupplier.cnpjNA : !!(editEntry && editEntry.cnpjNA);
     var payOptions = PAYMENTS.map(function (c) {
       var sel = editEntry && editEntry.payment === c ? " selected" : "";
       return '<option value="' + escapeHtml(c) + '"' + sel + ">" + escapeHtml(c) + "</option>";
@@ -1298,10 +1373,17 @@
       '<div class="form-grid-details">' +
       '<div class="field"><label>Mês de referência</label><input type="month" data-f="refMonth" value="' + escapeHtml(editEntry ? (editEntry.refMonth || "") : "") + '" /></div>' +
       '<div class="field full fornecedor-cnpj-row">' +
-      '<div class="field-inline"><label>Fornecedor</label><input type="text" data-f="supplier" placeholder="Nome do fornecedor (opcional)" value="' + escapeHtml(editEntry ? (editEntry.supplier || "") : "") + '" /></div>' +
-      '<div class="field-inline"><label>CNPJ</label><div class="cnpj-input-wrap">' +
-      '<input type="text" data-f="cnpj" placeholder="00.000.000/0000-00"' + (editEntry && editEntry.cnpjNA ? " disabled" : "") + ' value="' + escapeHtml(editEntry ? (editEntry.cnpj || "") : "") + '" />' +
-      '<label class="cnpj-na-toggle"><input type="checkbox" data-f="cnpjNotApplicable"' + (editEntry && editEntry.cnpjNA ? " checked" : "") + ' /> Não se aplica</label>' +
+      '<div class="field-inline"><label>Fornecedor</label>' +
+      '<select data-f="supplierId">' +
+      '<option value=""' + (supplierSelectValue === "" ? " selected" : "") + ">— Nenhum —</option>" +
+      supplierOptionsHtml +
+      '<option value="__other__"' + (supplierOtherVisible ? " selected" : "") + ">Outro (digitar manualmente)</option>" +
+      "</select>" +
+      '<input type="text" data-f="supplierOther" placeholder="Nome do fornecedor" style="margin-top:6px"' + (supplierOtherVisible ? "" : " hidden") + ' value="' + escapeHtml(editEntry && !matchedSupplier ? (editEntry.supplier || "") : "") + '" />' +
+      "</div>" +
+      '<div class="field-inline"><label>CNPJ' + (supplierCnpjLocked ? ' <span class="cnpj-locked-hint">(do cadastro do fornecedor)</span>' : "") + '</label><div class="cnpj-input-wrap">' +
+      '<input type="text" data-f="cnpj" placeholder="00.000.000/0000-00"' + (supplierCnpjLocked || entryCnpjNA ? " disabled" : "") + ' value="' + escapeHtml(entryCnpjValue) + '" />' +
+      '<label class="cnpj-na-toggle"><input type="checkbox" data-f="cnpjNotApplicable"' + (entryCnpjNA ? " checked" : "") + (supplierCnpjLocked ? " disabled" : "") + ' /> Não se aplica</label>' +
       "</div></div>" +
       "</div>" +
       '<div class="field full"><label>Observações</label><input type="text" data-f="notes" placeholder="Opcional — nº da NF, etc." value="' + escapeHtml(editEntry ? editEntry.notes : "") + '" /></div>' +
@@ -1605,8 +1687,21 @@
         var get = function (f) { return form.querySelector('[data-f="' + f + '"]').value; };
         var getChecked = function (f) { var el = form.querySelector('[data-f="' + f + '"]'); return !!(el && el.checked); };
         var date = get("date"), refMonth = get("refMonth"), category = get("category"), description = get("description").trim(),
-          amount = Number(get("amount")), payment = get("payment"), notes = get("notes").trim(), link = get("link").trim(),
-          supplier = get("supplier").trim(), cnpjNA = getChecked("cnpjNotApplicable"), cnpj = cnpjNA ? "" : get("cnpj").trim();
+          amount = Number(get("amount")), payment = get("payment"), notes = get("notes").trim(), link = get("link").trim();
+        var supplierIdVal = get("supplierId");
+        var supplier, cnpjNA, cnpj;
+        if (supplierIdVal === "__other__") {
+          supplier = get("supplierOther").trim();
+          cnpjNA = getChecked("cnpjNotApplicable");
+          cnpj = cnpjNA ? "" : get("cnpj").trim();
+        } else if (supplierIdVal) {
+          var chosenSupplier = findSupplierById(supplierIdVal);
+          supplier = chosenSupplier ? chosenSupplier.name : "";
+          cnpjNA = chosenSupplier ? !!chosenSupplier.cnpjNA : false;
+          cnpj = chosenSupplier && !cnpjNA ? (chosenSupplier.cnpj || "") : "";
+        } else {
+          supplier = ""; cnpjNA = false; cnpj = "";
+        }
         if (!date || !category || !description || !amount || amount <= 0) {
           form.style.outline = "1px solid var(--danger)";
           setTimeout(function () { form.style.outline = ""; }, 900);
@@ -1660,6 +1755,33 @@
         if (!cnpjInput) return;
         cnpjInput.disabled = checkbox.checked;
         if (checkbox.checked) cnpjInput.value = "";
+      });
+    });
+
+    panels.querySelectorAll('[data-f="supplierId"]').forEach(function (select) {
+      select.addEventListener("change", function () {
+        var form = select.closest("[data-entry-form]");
+        if (!form) return;
+        var otherInput = form.querySelector('[data-f="supplierOther"]');
+        var cnpjInput = form.querySelector('[data-f="cnpj"]');
+        var naCheckbox = form.querySelector('[data-f="cnpjNotApplicable"]');
+        var val = select.value;
+        if (val === "__other__") {
+          if (otherInput) otherInput.hidden = false;
+          if (naCheckbox) naCheckbox.disabled = false;
+          if (cnpjInput) cnpjInput.disabled = !!(naCheckbox && naCheckbox.checked);
+        } else if (val) {
+          if (otherInput) otherInput.hidden = true;
+          var sup = findSupplierById(val);
+          if (sup && cnpjInput) cnpjInput.value = sup.cnpjNA ? "" : (sup.cnpj || "");
+          if (sup && naCheckbox) naCheckbox.checked = !!sup.cnpjNA;
+          if (naCheckbox) naCheckbox.disabled = true;
+          if (cnpjInput) cnpjInput.disabled = true;
+        } else {
+          if (otherInput) otherInput.hidden = true;
+          if (naCheckbox) naCheckbox.disabled = false;
+          if (cnpjInput) cnpjInput.disabled = !!(naCheckbox && naCheckbox.checked);
+        }
       });
     });
 
@@ -1778,6 +1900,85 @@
         var bar = panels.querySelector('[data-filter-bar="' + pid + '"]');
         if (bar) bar.querySelectorAll("[data-flt]").forEach(function (el) { el.value = ""; });
         updateEntryTable(pid);
+      });
+    });
+
+    var supplierForm = panels.querySelector("[data-supplier-form]");
+    if (supplierForm) {
+      supplierForm.querySelectorAll('[data-sf="cnpjNotApplicable"]').forEach(function (checkbox) {
+        checkbox.addEventListener("change", function () {
+          var wrap = checkbox.closest(".cnpj-input-wrap");
+          var cnpjInput = wrap && wrap.querySelector('[data-sf="cnpj"]');
+          if (!cnpjInput) return;
+          cnpjInput.disabled = checkbox.checked;
+          if (checkbox.checked) cnpjInput.value = "";
+        });
+      });
+      supplierForm.querySelectorAll('[data-sf="cnpj"]').forEach(function (input) {
+        input.addEventListener("input", function () { input.value = formatCnpj(input.value); });
+      });
+    }
+
+    var submitSupplierBtn = panels.querySelector("[data-submit-supplier]");
+    if (submitSupplierBtn) {
+      submitSupplierBtn.addEventListener("click", function () {
+        var form = panels.querySelector("[data-supplier-form]");
+        var get = function (f) { return form.querySelector('[data-sf="' + f + '"]').value; };
+        var getChecked = function (f) { var el = form.querySelector('[data-sf="' + f + '"]'); return !!(el && el.checked); };
+        var name = get("name").trim();
+        var cnpjNA = getChecked("cnpjNotApplicable");
+        var cnpj = cnpjNA ? "" : get("cnpj").trim();
+        if (!name) {
+          form.style.outline = "1px solid var(--danger)";
+          setTimeout(function () { form.style.outline = ""; }, 900);
+          return;
+        }
+        if (!Array.isArray(state.suppliers)) state.suppliers = [];
+        if (editingSupplier) {
+          var existing = findSupplierById(editingSupplier);
+          if (existing) {
+            existing.name = name;
+            existing.cnpjNA = cnpjNA;
+            if (cnpj) existing.cnpj = cnpj; else delete existing.cnpj;
+          }
+          editingSupplier = null;
+        } else {
+          var newSupplier = { id: "sup" + Date.now() + Math.floor(Math.random() * 1000), name: name, cnpjNA: cnpjNA };
+          if (cnpj) newSupplier.cnpj = cnpj;
+          state.suppliers.push(newSupplier);
+        }
+        renderAll();
+        persist();
+      });
+    }
+
+    var cancelEditSupplierBtn = panels.querySelector("[data-cancel-edit-supplier]");
+    if (cancelEditSupplierBtn) {
+      cancelEditSupplierBtn.addEventListener("click", function () {
+        editingSupplier = null;
+        renderAll();
+      });
+    }
+
+    panels.querySelectorAll("[data-edit-supplier]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingSupplier = btn.getAttribute("data-edit-supplier");
+        renderAll();
+        var form = document.querySelector("[data-supplier-form]");
+        if (form) form.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+
+    panels.querySelectorAll("[data-del-supplier]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var sid = btn.getAttribute("data-del-supplier");
+        var supplier = findSupplierById(sid);
+        if (!supplier) return;
+        pendingDelete = { pid: null, id: sid, kind: "supplier" };
+        document.getElementById("confirmTitle").textContent = "Excluir fornecedor";
+        var msg = document.getElementById("confirmMessage");
+        msg.textContent = "Excluir “" + supplier.name + "”? Lançamentos que já usam esse fornecedor não serão alterados. Essa ação não pode ser desfeita.";
+        document.getElementById("confirmOverlay").classList.add("open");
       });
     });
   }
@@ -1941,9 +2142,17 @@
   function doPendingDelete() {
     if (!pendingDelete) return;
     var pid = pendingDelete.pid, id = pendingDelete.id, kind = pendingDelete.kind;
+    document.getElementById("confirmOverlay").classList.remove("open");
+    if (kind === "supplier") {
+      pendingDelete = null;
+      state.suppliers = (state.suppliers || []).filter(function (x) { return x.id !== id; });
+      if (editingSupplier === id) editingSupplier = null;
+      renderAll();
+      persist();
+      return;
+    }
     var p = state.projects.find(function (x) { return x.id === pid; });
     pendingDelete = null;
-    document.getElementById("confirmOverlay").classList.remove("open");
     if (!p) return;
     if (kind === "installment") {
       var inst = p.installments.find(function (x) { return x.id === id; });
