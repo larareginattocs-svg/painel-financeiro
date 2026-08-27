@@ -1766,8 +1766,33 @@
     return "﻿" + lines.join("\r\n");
   }
 
-  function exportRows(rowsData, filenameBase) {
+  function rubricaSummaryCsvLines() {
+    var m = rubricaProjectMatrix();
+    if (m.rowKeys.length === 0) return [];
+    var lines = [];
+    lines.push("");
+    lines.push(csvField("Gasto por rubrica"));
+    var header = ["Rubrica"].concat(state.projects.map(function (p) { return p.name; })).concat(["Total"]).map(csvField).join(";");
+    lines.push(header);
+    m.rowKeys.forEach(function (r) {
+      var label = r === "__none__" ? "Sem rubrica definida" : r;
+      var cells = state.projects.map(function (p) { return csvNum(m.data[r][p.id] || 0); });
+      lines.push([label].concat(cells).concat([csvNum(m.data[r].total)]).map(csvField).join(";"));
+    });
+    var totalAll = m.rowKeys.reduce(function (sum, r) { return sum + m.data[r].total; }, 0);
+    var totalRow = state.projects.map(function (p) {
+      return csvNum(m.rowKeys.reduce(function (s, r) { return s + (m.data[r][p.id] || 0); }, 0));
+    });
+    lines.push(["Total geral"].concat(totalRow).concat([csvNum(totalAll)]).map(csvField).join(";"));
+    return lines;
+  }
+
+  function exportRows(rowsData, filenameBase, includeRubricaSummary) {
     var csv = entriesCsv(rowsData);
+    if (includeRubricaSummary) {
+      var extra = rubricaSummaryCsvLines();
+      if (extra.length) csv += "\r\n" + extra.join("\r\n");
+    }
     try {
       var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       var url = URL.createObjectURL(blob);
@@ -1800,7 +1825,7 @@
         rowsData.push({ projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato, rubrica: e.rubrica });
       });
     });
-    exportRows(rowsData, "lancamentos-todos-os-projetos");
+    exportRows(rowsData, "lancamentos-todos-os-projetos", true);
   }
 
   // ---------------- Event handling ----------------
