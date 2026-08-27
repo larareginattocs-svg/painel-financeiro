@@ -12,8 +12,8 @@
     --surface-sunken: #efeae2;
     --border: #ddd5c8;
     --ink: #241c30;
-    --ink-soft: #6b6178;
-    --ink-faint: #9891a3;
+    --ink-soft: #5c5266;
+    --ink-faint: #948aa1;
     --brand: #7c2fb0;
     --brand-ink: #ffffff;
     --brand-soft: #f1e6f9;
@@ -154,6 +154,22 @@
 
   .user-status { display: flex; align-items: center; gap: 10px; margin-right: 14px; }
   .user-badge { font-size: 13px; font-weight: 700; color: var(--ink); }
+  .theme-toggle {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    box-shadow: var(--shadow);
+  }
+  .theme-toggle:hover { border-color: var(--brand); }
 
   .login-screen {
     position: fixed; inset: 0; z-index: 50;
@@ -161,6 +177,7 @@
     background: var(--surface-sunken);
     padding: 20px;
   }
+  .login-theme-toggle { position: absolute; top: 20px; right: 20px; }
   .login-card {
     width: 100%; max-width: 360px;
     background: var(--surface);
@@ -254,10 +271,19 @@
     width: 100%;
   }
   .tab:hover { color: var(--ink); background: var(--surface-sunken); }
-  .tab.active { color: var(--brand); background: var(--brand-soft); border-left-color: var(--gold); }
+  .tab.active {
+    color: var(--brand);
+    background: var(--brand-soft);
+    border-left-color: var(--gold);
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 22%, transparent);
+  }
+  .tab-ico { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
+  .tab-label { overflow: hidden; text-overflow: ellipsis; }
   .tab .pip {
     width: 7px; height: 7px; border-radius: 50%;
     flex-shrink: 0;
+    margin-left: auto;
   }
   .tab-add {
     color: var(--brand);
@@ -269,6 +295,7 @@
     border-radius: 0;
     justify-content: flex-start;
   }
+  .tab-add .tab-ico { font-size: 17px; }
 
   @media (max-width: 860px) {
     .app-layout { flex-direction: column; }
@@ -339,10 +366,11 @@
     padding: 3px 10px;
     border-radius: 99px;
   }
-  .pill.ok { background: var(--good-soft); color: var(--good); }
-  .pill.warn { background: var(--warn-soft); color: var(--warn); }
-  .pill.danger { background: var(--danger-soft); color: var(--danger); }
-  .pill.neutral { background: var(--surface-sunken); color: var(--ink-faint); }
+  .pill.ok { background: var(--good-soft); color: var(--good); border: 1px solid var(--good); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
+  .pill.danger { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger); }
+  .pill.neutral { background: var(--surface-sunken); color: var(--ink-faint); border: 1px solid var(--border); }
+  td.val.strong { font-weight: 700; color: var(--ink); }
 
   .bar-track {
     width: 100%;
@@ -355,8 +383,45 @@
   .bar-fill.ok { background: var(--good); }
   .bar-fill.warn { background: var(--warn); }
   .bar-fill.danger { background: var(--danger); }
+  .bar-fill.neutral { background: var(--ink-faint); }
+  .card-bar { margin-top: 10px; height: 5px; }
 
-  .empty-row td { color: var(--ink-faint); font-style: italic; text-align: center; padding: 22px; }
+  .empty-row td { color: var(--ink-faint); text-align: center; padding: 26px 16px; }
+  .empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; font-style: normal; }
+  .empty-ico { font-size: 26px; opacity: 0.75; }
+  .empty-state span:last-child { font-size: 13.5px; max-width: 360px; }
+
+  .cell-label { display: none; }
+
+  /* ---------- Projects table -> cards on narrow screens ---------- */
+  @media (max-width: 640px) {
+    .projects-table-wrap { border: none; }
+    .projects-table thead { display: none; }
+    .projects-table, .projects-table tbody, .projects-table tr, .projects-table td { display: block; width: 100%; }
+    .projects-table tbody tr.project-row {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: var(--surface);
+    }
+    .projects-table tbody tr.project-row:hover { background: var(--surface); }
+    .projects-table td {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px dashed var(--border);
+      padding: 7px 0;
+      text-align: right;
+    }
+    .projects-table td:first-child { font-weight: 700; color: var(--ink); font-size: 15px; border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 9px; }
+    .projects-table tr.project-row td:last-child { border-bottom: none; }
+    .projects-table .cell-label { display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; color: var(--ink-faint); text-align: left; }
+    .projects-table td[data-label="Execução"] .bar-track { max-width: 120px !important; }
+    .projects-table tr.empty-row { border: none; padding: 0; margin: 0; }
+    .projects-table tr.empty-row td { display: block; border: none; text-align: center; }
+  }
 
   /* ---------- Month grouping (Lançamentos table) ---------- */
   tr.month-group-row td {
@@ -775,6 +840,18 @@
   details.section-card > summary .summary-total { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--ink-soft); font-weight: 500; }
   .rubrica-total-row td { font-weight: 700; background: var(--surface-sunken); border-top: 2px solid var(--border); }
   .rubrica-empty { color: var(--ink-faint); font-style: italic; padding: 8px 0 4px; }
+
+  /* ---------- Monthly chart ---------- */
+  .chart-wrap { padding: 6px 0 2px; }
+  .monthly-chart { width: 100%; height: auto; display: block; }
+  .chart-bar { fill: var(--brand); transition: fill 0.15s ease; }
+  .chart-bar.ok { fill: var(--good); }
+  .chart-bar.warn { fill: var(--warn); }
+  .chart-bar.danger { fill: var(--danger); }
+  .chart-bar:hover { fill: var(--gold); }
+  .chart-xlabel { fill: var(--ink-faint); font-size: 9px; font-family: "Karla", sans-serif; }
+  .chart-ideal-line { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 4 3; }
+  .chart-ideal-label { fill: var(--ink-soft); font-size: 10px; font-family: "Karla", sans-serif; }
   .rubrica-list { display: flex; flex-direction: column; gap: 14px; }
   .rubrica-card {
     border: 1px solid var(--border);
@@ -866,6 +943,9 @@
 <body>
 
 <div class="login-screen" id="loginScreen">
+  <button type="button" class="theme-toggle login-theme-toggle" id="themeToggleLogin" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
+    <span class="theme-toggle-ico" id="themeToggleLoginIco">🌙</span>
+  </button>
   <form class="login-card" id="loginForm">
     <div class="login-eyebrow">Painel de Execução Financeira</div>
     <h1 class="login-title">Entrar</h1>
@@ -891,6 +971,9 @@
       <div class="sub">Previsto x realizado, por projeto.</div>
     </div>
     <div class="user-status">
+      <button type="button" class="theme-toggle" id="themeToggle" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro">
+        <span class="theme-toggle-ico" id="themeToggleIco">🌙</span>
+      </button>
       <span class="user-badge" id="userBadge"></span>
       <button type="button" class="btn subtle" id="logoutBtn">Sair</button>
     </div>
@@ -952,6 +1035,31 @@
 <script>
 (function () {
   "use strict";
+
+  // ---------------- Tema (claro/escuro) ----------------
+  var THEME_KEY = "painel-financeiro-theme";
+  function systemPrefersDark() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function currentTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem(THEME_KEY); } catch (e) {}
+    return saved === "light" || saved === "dark" ? saved : (systemPrefersDark() ? "dark" : "light");
+  }
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    var symbol = theme === "dark" ? "☀️" : "🌙";
+    var ico1 = document.getElementById("themeToggleIco");
+    if (ico1) ico1.textContent = symbol;
+    var ico2 = document.getElementById("themeToggleLoginIco");
+    if (ico2) ico2.textContent = symbol;
+  }
+  function toggleTheme() {
+    var next = currentTheme() === "dark" ? "light" : "dark";
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    applyTheme(next);
+  }
+  applyTheme(currentTheme());
 
   // ---------------- Configuração do Supabase ----------------
   // EDITE AQUI com os dados do seu projeto Supabase (Settings → API).
@@ -1167,31 +1275,34 @@
     });
     var totalBalance = totalBudget - totalSpent;
     var totalPct = totalBudget > 0 ? totalSpent / totalBudget : 0;
+    var pctStatus = totalBudget <= 0 ? "neutral" : (totalPct > 1 ? "danger" : (totalPct > 0.9 ? "warn" : "ok"));
 
     var html = "";
     html += '<div class="card accent"><div class="label">Orçamento consolidado</div><div class="value num">' + fmtMoney(totalBudget) + "</div></div>";
     html += '<div class="card"><div class="label">Gasto até agora</div><div class="value num">' + fmtMoney(totalSpent) + "</div></div>";
     html += '<div class="card"><div class="label">Saldo disponível</div><div class="value num">' + fmtMoney(totalBalance) + "</div></div>";
-    html += '<div class="card"><div class="label">% executado</div><div class="value num">' + fmtPct(totalPct) + "</div></div>";
+    html += '<div class="card"><div class="label">% executado</div><div class="value num">' + fmtPct(totalPct) +
+      '</div><div class="bar-track card-bar"><div class="bar-fill ' + pctStatus + '" style="width:' + Math.min(100, totalPct * 100).toFixed(0) + '%"></div></div></div>';
     document.getElementById("summaryCards").innerHTML = html;
   }
 
   function renderTabs() {
     var html = "";
-    html += tabButton("resumo", "Resumo", null);
-    html += tabButton("fornecedores", "Fornecedores", null);
-    html += tabButton("pessoas", "Recursos Humanos", null);
+    html += tabButton("resumo", "Resumo", null, "📊");
+    html += tabButton("fornecedores", "Fornecedores", null, "🏷️");
+    html += tabButton("pessoas", "Recursos Humanos", null, "🧑‍💼");
     state.projects.forEach(function (p) {
       var t = projectTotals(p);
-      html += tabButton(p.id, p.name, t.status);
+      html += tabButton(p.id, p.name, t.status, "📁");
     });
-    html += '<button class="tab tab-add" id="btnAddProject" type="button" title="Novo projeto">+</button>';
+    html += '<button class="tab tab-add" id="btnAddProject" type="button" title="Novo projeto"><span class="tab-ico">+</span><span class="tab-label">Novo projeto</span></button>';
     document.getElementById("tabs").innerHTML = html;
   }
-  function tabButton(id, label, status) {
+  function tabButton(id, label, status, icon) {
     var cls = "tab" + (activeTab === id ? " active" : "");
     var pip = status ? '<span class="pip" style="background:var(--' + (status === "neutral" ? "ink-faint" : status === "ok" ? "good" : status) + ')"></span>' : "";
-    return '<button class="' + cls + '" data-tab="' + id + '" type="button">' + pip + escapeHtml(label) + "</button>";
+    var ico = icon ? '<span class="tab-ico">' + icon + "</span>" : "";
+    return '<button class="' + cls + '" data-tab="' + id + '" type="button" title="' + escapeHtml(label) + '">' + ico + '<span class="tab-label">' + escapeHtml(label) + "</span>" + pip + "</button>";
   }
 
   function renderPanels() {
@@ -1225,25 +1336,79 @@
     return "";
   }
 
+  function monthlyChartData() {
+    var byMonth = {};
+    state.projects.forEach(function (p) {
+      p.entries.forEach(function (e) {
+        var key = e.refMonth || "";
+        if (!key) return;
+        byMonth[key] = (byMonth[key] || 0) + (Number(e.amount) || 0);
+      });
+    });
+    var keys = Object.keys(byMonth).sort();
+    return keys.map(function (k) { return { key: k, amount: byMonth[k] }; });
+  }
+
+  function renderMonthlyChart() {
+    var data = monthlyChartData();
+    if (data.length === 0) return "";
+    var totalBudget = state.projects.reduce(function (s, p) { return s + (Number(p.budget) || 0); }, 0);
+    var idealPace = totalBudget > 0 ? totalBudget / data.length : 0;
+    var totalSpentAll = data.reduce(function (s, d) { return s + d.amount; }, 0);
+    var maxVal = Math.max.apply(null, data.map(function (d) { return d.amount; }).concat([idealPace, 1]));
+
+    var W = 720, H = 220, padL = 6, padR = 6, padT = 14, padB = 26;
+    var chartW = W - padL - padR, chartH = H - padT - padB;
+    var gap = data.length > 12 ? 4 : 10;
+    var barW = Math.max(4, chartW / data.length - gap);
+
+    var bars = "";
+    data.forEach(function (d, i) {
+      var h = (d.amount / maxVal) * chartH;
+      var x = padL + i * (chartW / data.length) + gap / 2;
+      var y = padT + (chartH - h);
+      var status = idealPace > 0 ? (d.amount > idealPace * 1.15 ? "danger" : (d.amount > idealPace ? "warn" : "ok")) : "ok";
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + Math.max(0, h).toFixed(1) + '" rx="3" class="chart-bar ' + status + '"><title>' + escapeHtml(fmtMonth(d.key)) + ": " + fmtMoney(d.amount) + "</title></rect>";
+      if (data.length <= 18) {
+        bars += '<text x="' + (x + barW / 2).toFixed(1) + '" y="' + (H - 8) + '" class="chart-xlabel" text-anchor="middle">' + escapeHtml(fmtMonth(d.key).slice(0, 3)) + "</text>";
+      }
+    });
+
+    var line = "";
+    if (idealPace > 0) {
+      var lineY = padT + (chartH - (idealPace / maxVal) * chartH);
+      line = '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + lineY.toFixed(1) + '" y2="' + lineY.toFixed(1) + '" class="chart-ideal-line" />' +
+        '<text x="' + (W - padR) + '" y="' + Math.max(10, lineY - 5).toFixed(1) + '" class="chart-ideal-label" text-anchor="end">Ritmo ideal: ' + fmtMoney(idealPace) + "/mês</text>";
+    }
+
+    return (
+      '<details class="section-card" open data-monthly-chart>' +
+      '<summary>Gasto por mês <span class="summary-total">' + fmtMoney(totalSpentAll) + "</span><span class=\"chev\">▶</span></summary>" +
+      '<div class="chart-wrap"><svg viewBox="0 0 ' + W + " " + H + '" class="monthly-chart" preserveAspectRatio="none">' + bars + line + "</svg></div>" +
+      (idealPace > 0 ? "" : '<p class="rubrica-empty">Cadastre um orçamento no projeto para ver a linha de ritmo ideal.</p>') +
+      "</details>"
+    );
+  }
+
   function renderResumoPanel() {
     var cls = "panel" + (activeTab === "resumo" ? " active" : "");
     var rows = "";
     if (state.projects.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="8">Nenhum projeto cadastrado ainda. Clique em “+” para adicionar.</td></tr>';
+      rows = '<tr class="empty-row"><td colspan="8"><div class="empty-state"><span class="empty-ico">📁</span><span>Nenhum projeto cadastrado ainda. Clique em “+” no menu ao lado para adicionar.</span></div></td></tr>';
     } else {
       state.projects.forEach(function (p) {
         var t = projectTotals(p);
         var received = installmentsTotal(p);
         var cashBalance = received - t.spent;
-        rows += "<tr>";
-        rows += "<td>" + escapeHtml(p.name) + "</td>";
-        rows += '<td class="val num">' + fmtMoney(t.budget) + "</td>";
-        rows += '<td class="val num">' + fmtMoney(t.spent) + "</td>";
-        rows += '<td class="val num">' + fmtMoney(t.balance) + "</td>";
-        rows += '<td class="val num">' + fmtMoney(received) + "</td>";
-        rows += '<td class="val num">' + fmtMoney(cashBalance) + "</td>";
-        rows += '<td class="val"><div class="bar-track" style="max-width:90px;margin-left:auto"><div class="bar-fill ' + t.status + '" style="width:' + Math.min(100, t.pct * 100).toFixed(0) + '%"></div></div></td>';
-        rows += '<td><span class="pill ' + t.status + '">' + statusLabel(t.status) + "</span></td>";
+        rows += '<tr class="project-row">';
+        rows += '<td data-label="Projeto"><span class="cell-label">Projeto</span>' + escapeHtml(p.name) + "</td>";
+        rows += '<td class="val num" data-label="Orçamento"><span class="cell-label">Orçamento</span>' + fmtMoney(t.budget) + "</td>";
+        rows += '<td class="val num" data-label="Gasto"><span class="cell-label">Gasto</span>' + fmtMoney(t.spent) + "</td>";
+        rows += '<td class="val num" data-label="Saldo orç."><span class="cell-label">Saldo orç.</span>' + fmtMoney(t.balance) + "</td>";
+        rows += '<td class="val num" data-label="Recebido"><span class="cell-label">Recebido</span>' + fmtMoney(received) + "</td>";
+        rows += '<td class="val num strong" data-label="Saldo em caixa"><span class="cell-label">Saldo em caixa</span>' + fmtMoney(cashBalance) + "</td>";
+        rows += '<td class="val" data-label="Execução"><span class="cell-label">Execução</span><div class="bar-track" style="max-width:90px;margin-left:auto"><div class="bar-fill ' + t.status + '" style="width:' + Math.min(100, t.pct * 100).toFixed(0) + '%"></div></div></td>';
+        rows += '<td data-label="Status"><span class="cell-label">Status</span><span class="pill ' + t.status + '">' + statusLabel(t.status) + "</span></td>";
         rows += "</tr>";
       });
     }
@@ -1257,9 +1422,10 @@
     return (
       '<div class="' + cls + '" data-panel="resumo">' +
       alertsHtml +
+      renderMonthlyChart() +
       '<div class="section-title-row"><div class="section-title">Todos os projetos</div>' +
-      '<button class="btn subtle export-btn" type="button" data-export-all>⬇ Exportar tudo (.csv)</button></div>' +
-      '<div class="table-wrap"><table><thead><tr>' +
+      '<button class="btn export-btn" type="button" data-export-all>⬇ Exportar tudo (.csv)</button></div>' +
+      '<div class="table-wrap projects-table-wrap"><table class="projects-table"><thead><tr>' +
       "<th>Projeto</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Saldo orç.</th><th class=\"val\">Recebido</th><th class=\"val\">Saldo em caixa</th><th class=\"val\">Execução</th><th>Status</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
       renderSupplierSummary() +
@@ -1367,7 +1533,7 @@
 
     var rows;
     if (suppliers.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="3">Nenhum fornecedor cadastrado ainda.</td></tr>';
+      rows = '<tr class="empty-row"><td colspan="3"><div class="empty-state"><span class="empty-ico">🏷️</span><span>Nenhum fornecedor cadastrado ainda. Cadastre acima para vincular aos lançamentos.</span></div></td></tr>';
     } else {
       rows = suppliers.map(function (s) {
         var cnpjText = s.cnpjNA ? '<span class="cnpj-na">Não se aplica</span>' : escapeHtml(s.cnpj || "—");
@@ -1418,7 +1584,7 @@
 
     var rows;
     if (people.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="4">Nenhuma pessoa cadastrada ainda.</td></tr>';
+      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">🧑‍💼</span><span>Nenhuma pessoa cadastrada ainda. Cadastre acima para vincular aos lançamentos de RH.</span></div></td></tr>';
     } else {
       rows = people.map(function (s) {
         return "<tr" + (editingPerson === s.id ? ' class="editing-row"' : "") + ">" +
@@ -1521,7 +1687,7 @@
 
   function entryRowsHtml(p, list) {
     if (list.length === 0) {
-      return '<tr class="empty-row"><td colspan="9">Nenhum lançamento encontrado.</td></tr>';
+      return '<tr class="empty-row"><td colspan="9"><div class="empty-state"><span class="empty-ico">🧾</span><span>Nenhum lançamento encontrado. Ajuste os filtros ou adicione um novo lançamento acima.</span></div></td></tr>';
     }
     // Group by mês de referência — entries without one fall into a trailing "Sem mês definido" group.
     var groups = {};
@@ -1728,7 +1894,7 @@
       "</div>" +
 
       '<div class="section-title-row"><div class="section-title">Lançamentos</div>' +
-      '<button class="btn subtle export-btn" type="button" data-export-project="' + p.id + '">⬇ Exportar (.csv)</button></div>' +
+      '<button class="btn export-btn" type="button" data-export-project="' + p.id + '">⬇ Exportar (.csv)</button></div>' +
 
       '<div class="filter-bar" data-filter-bar="' + p.id + '">' +
       '<div class="field filter-text"><label>Buscar</label><input type="text" data-flt="text" placeholder="Descrição ou observação…" value="' + escapeHtml(f.text) + '" /></div>' +
@@ -1756,7 +1922,7 @@
     var rows = "";
     var sorted = p.installments.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
     if (sorted.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="4">Nenhuma parcela registrada ainda.</td></tr>';
+      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">💰</span><span>Nenhuma parcela registrada ainda.</span></div></td></tr>';
     } else {
       sorted.forEach(function (i) {
         rows += '<tr>';
@@ -1969,6 +2135,9 @@
   }
 
   function bindTopEvents() {
+    var themeToggle = document.getElementById("themeToggle");
+    if (themeToggle) themeToggle.addEventListener("click", toggleTheme);
+
     document.getElementById("tabs").addEventListener("click", function (e) {
       var btn = e.target.closest("[data-tab]");
       if (btn) { switchTab(btn.getAttribute("data-tab")); return; }
@@ -2841,6 +3010,8 @@
 
     bindTopEvents();
     bindLoginEvents();
+    var themeToggleLogin = document.getElementById("themeToggleLogin");
+    if (themeToggleLogin) themeToggleLogin.addEventListener("click", toggleTheme);
     checkSession();
   }
 
