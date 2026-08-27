@@ -1,73 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Karla:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
 <title>Painel de Execução</title>
 <style>
   :root {
-    --bg: #f2f1ec;
+    --bg: #f6f4f1;
     --surface: #ffffff;
-    --surface-sunken: #e9e7de;
-    --border: #d7d3c4;
-    --ink: #16211f;
-    --ink-soft: #5b6663;
-    --ink-faint: #8b9390;
-    --brand: #8b2fc9;
+    --surface-sunken: #efeae2;
+    --border: #ddd5c8;
+    --ink: #241c30;
+    --ink-soft: #6b6178;
+    --ink-faint: #9891a3;
+    --brand: #7c2fb0;
     --brand-ink: #ffffff;
-    --brand-soft: #f2e6fb;
-    --gold: #6430f4;
-    --gold-soft: #ece5fe;
-    --good: #2f7a4f;
+    --brand-soft: #f1e6f9;
+    --gold: #a6791f;
+    --gold-soft: #f6ecd7;
+    --good: #337a52;
     --good-soft: #e3f1e6;
-    --warn: #a86a11;
+    --warn: #bd6a1a;
     --warn-soft: #faedd6;
     --danger: #ad3b2d;
     --danger-soft: #fbe6e1;
-    --focus: #8b2fc9;
-    --shadow: 0 1px 2px rgba(41,15,64,0.06), 0 4px 14px rgba(41,15,64,0.06);
+    --focus: #7c2fb0;
+    --shadow: 0 1px 2px rgba(36,20,48,0.06), 0 4px 14px rgba(36,20,48,0.07);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #16101f;
-      --surface: #201730;
-      --surface-sunken: #281d3a;
-      --border: #3a2b52;
-      --ink: #f1ecfa;
-      --ink-soft: #b8abd1;
-      --ink-faint: #8677a3;
-      --brand: #c583f0;
+      --bg: #17101f;
+      --surface: #221733;
+      --surface-sunken: #2b1e40;
+      --border: #3d2c58;
+      --ink: #f3eefb;
+      --ink-soft: #beb0d6;
+      --ink-faint: #8d7fab;
+      --brand: #b678e8;
       --brand-ink: #1c1024;
       --brand-soft: #3a2452;
-      --gold: #a996ff;
-      --gold-soft: #2c2352;
+      --gold: #d4af6a;
+      --gold-soft: #392c19;
       --good: #6fbf8c;
       --good-soft: #1d3226;
-      --warn: #e0a94a;
+      --warn: #e3993f;
       --warn-soft: #3a2c14;
       --danger: #e17b6a;
       --danger-soft: #3a2119;
-      --focus: #c583f0;
-      --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 6px 20px rgba(0,0,0,0.4);
+      --focus: #b678e8;
+      --shadow: 0 1px 2px rgba(8,3,14,0.35), 0 6px 22px rgba(8,3,14,0.45);
     }
   }
   :root[data-theme="dark"] {
-    --bg: #16101f;
-    --surface: #201730;
-    --surface-sunken: #281d3a;
-    --border: #3a2b52;
-    --ink: #f1ecfa;
-    --ink-soft: #b8abd1;
-    --ink-faint: #8677a3;
-    --brand: #c583f0;
+    --bg: #17101f;
+    --surface: #221733;
+    --surface-sunken: #2b1e40;
+    --border: #3d2c58;
+    --ink: #f3eefb;
+    --ink-soft: #beb0d6;
+    --ink-faint: #8d7fab;
+    --brand: #b678e8;
     --brand-ink: #1c1024;
     --brand-soft: #3a2452;
-    --gold: #a996ff;
-    --gold-soft: #2c2352;
+    --gold: #d4af6a;
+    --gold-soft: #392c19;
     --good: #6fbf8c;
     --good-soft: #1d3226;
-    --warn: #e0a94a;
+    --warn: #e3993f;
     --warn-soft: #3a2c14;
     --danger: #e17b6a;
     --danger-soft: #3a2119;
-    --focus: #c583f0;
-    --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 6px 20px rgba(0,0,0,0.4);
+    --focus: #b678e8;
+    --shadow: 0 1px 2px rgba(8,3,14,0.35), 0 6px 22px rgba(8,3,14,0.45);
   }
 
   * { box-sizing: border-box; }
@@ -630,7 +635,7 @@
   /* ---------- Modal (add project) ---------- */
   .overlay {
     position: fixed; inset: 0;
-    background: rgba(10, 16, 15, 0.45);
+    background: rgba(20, 12, 28, 0.5);
     display: none;
     align-items: center;
     justify-content: center;
@@ -767,6 +772,8 @@
   .section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
   .section-title-row .section-title { margin-bottom: 0; }
 </style>
+</head>
+<body>
 
 <div class="login-screen" id="loginScreen">
   <form class="login-card" id="loginForm">
@@ -2598,3 +2605,5 @@
   }
 })();
 </script>
+</body>
+</html>
