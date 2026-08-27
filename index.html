@@ -248,6 +248,10 @@
     margin-bottom: 12px;
   }
 
+  .proj-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .proj-title-row .proj-title { font-size: 20px; color: var(--brand); margin: 0; }
+  .proj-title-row .proj-name-input { font-size: 16px; padding: 6px 10px; min-width: 220px; flex: 1 1 240px; }
+
   table { width: 100%; border-collapse: collapse; }
   .table-wrap {
     overflow-x: auto;
@@ -896,6 +900,7 @@
   var editingInstallment = null; // { pid, iid } — installment currently open in its mini-form
   var editingSupplier = null; // id of supplier currently open in the fornecedores form
   var editingPerson = null; // id of person currently open in the recursos-humanos form
+  var editingProjectName = null; // id of project whose name field is currently open for editing
   var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "installment" | "supplier" | "person" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,dataUrl} (new file staged), null (explicit removal), or undefined (no change)
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
@@ -1425,8 +1430,17 @@
     var rows = entryRowsHtml(p, filtered);
     var hasActiveFilter = !!(f.text || f.category || f.payment || f.from || f.to);
 
+    var isEditingName = editingProjectName === p.id;
     return (
       '<div class="' + cls + '" data-panel="' + p.id + '">' +
+      '<div class="proj-title-row">' +
+      (isEditingName
+        ? '<input type="text" class="proj-name-input" data-project-name-input="' + p.id + '" value="' + escapeHtml(p.name) + '" />' +
+          '<button class="btn" type="button" data-save-project-name="' + p.id + '">Salvar</button>' +
+          '<button class="btn subtle" type="button" data-cancel-project-name>Cancelar</button>'
+        : '<h2 class="proj-title">' + escapeHtml(p.name) + "</h2>" +
+          '<button class="row-edit" type="button" data-edit-project-name="' + p.id + '" title="Editar nome do projeto">✎</button>') +
+      "</div>" +
       statusBannerHtml(t, null) +
       '<div class="proj-head">' +
       '<div class="proj-stats">' +
@@ -1709,6 +1723,7 @@
   function switchTab(id) {
     activeTab = id;
     editing = null;
+    editingProjectName = null;
     try { sessionStorage.setItem("painel-active-tab", id); } catch (e) {}
     renderAll();
   }
@@ -1776,6 +1791,61 @@
         }
         renderAll();
         persist();
+      });
+    });
+
+    panels.querySelectorAll("[data-edit-project-name]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingProjectName = btn.getAttribute("data-edit-project-name");
+        renderAll();
+        var pid = editingProjectName;
+        setTimeout(function () {
+          var input = panels.querySelector('[data-project-name-input="' + pid + '"]');
+          if (input) { input.focus(); input.select(); }
+        }, 0);
+      });
+    });
+
+    panels.querySelectorAll("[data-cancel-project-name]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingProjectName = null;
+        renderAll();
+      });
+    });
+
+    panels.querySelectorAll("[data-save-project-name]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-save-project-name");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        if (!p) return;
+        var input = panels.querySelector('[data-project-name-input="' + pid + '"]');
+        var newName = input ? input.value.trim() : "";
+        if (!newName) {
+          if (input) { input.style.outline = "1px solid var(--danger)"; setTimeout(function () { input.style.outline = ""; }, 900); }
+          return;
+        }
+        var oldName = p.name;
+        if (newName !== oldName) {
+          p.name = newName;
+          logHistory(p, "edit", "Nome do projeto alterado de \"" + oldName + "\" para \"" + newName + "\"");
+        }
+        editingProjectName = null;
+        renderAll();
+        persist();
+      });
+    });
+
+    panels.querySelectorAll('[data-project-name-input]').forEach(function (input) {
+      input.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          var pid = input.getAttribute("data-project-name-input");
+          var saveBtn = panels.querySelector('[data-save-project-name="' + pid + '"]');
+          if (saveBtn) saveBtn.click();
+        } else if (ev.key === "Escape") {
+          editingProjectName = null;
+          renderAll();
+        }
       });
     });
 
