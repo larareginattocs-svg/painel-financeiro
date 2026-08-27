@@ -1673,6 +1673,8 @@
       '<div class="detail-item"><span class="detail-label">Cargo</span><span class="detail-value">' + escapeHtml(e.role || "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">Formato</span><span class="detail-value">' + escapeHtml(e.formato || "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">Mês de referência</span><span class="detail-value">' + fmtMonth(e.refMonth) + "</span></div>" +
+      '<div class="detail-item"><span class="detail-label">Descrição do serviço</span><span class="detail-value">' + escapeHtml(e.serviceDescription || "—") + "</span></div>" +
+      '<div class="detail-item"><span class="detail-label">Quantidade</span><span class="detail-value">' + (e.quantity != null && e.quantity !== "" ? escapeHtml(String(e.quantity)) : "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">Link</span><span class="detail-value">' + (e.link ? '<a class="row-link" href="' + escapeHtml(e.link) + '" target="_blank" rel="noopener noreferrer">🔗 Abrir link</a>' : "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">Anexo</span><span class="detail-value">' + (hasAttach ? '<button class="row-attach" data-toggle-attach="' + e.id + '" data-proj="' + p.id + '" title="' + escapeHtml(e.attachment.name) + '">📎 Ver</button>' : "—") + "</span></div>" +
       '<div class="detail-item wide"><span class="detail-label">Observações</span><span class="detail-value">' + (escapeHtml(e.notes || "") || "—") + "</span></div>" +
@@ -1844,6 +1846,8 @@
       '<div class="field-inline"><label>Rubrica</label><select data-f="rubrica"><option value="">Selecione…</option>' +
       RUBRICAS.map(function (r) { return '<option value="' + escapeHtml(r) + '"' + (editEntry && editEntry.rubrica === r ? " selected" : "") + ">" + escapeHtml(r) + "</option>"; }).join("") +
       "</select></div>" +
+      '<div class="field-inline"><label>Descrição do serviço</label><input type="text" data-f="serviceDescription" placeholder="Descreva o serviço prestado" value="' + escapeHtml(editEntry ? (editEntry.serviceDescription || "") : "") + '" /></div>' +
+      '<div class="field-inline"><label>Quantidade</label><input type="number" step="1" min="0" data-f="quantity" placeholder="0" value="' + escapeHtml(editEntry && editEntry.quantity != null ? editEntry.quantity : "") + '" /></div>' +
       "</div>" +
       '<div class="fornecedor-cnpj-row entry-rh-inline"' + (isRH ? "" : " hidden") + ' data-rh-fields>' +
       '<div class="field-inline"><label>Pessoa (Recursos Humanos)</label>' +
@@ -2052,11 +2056,11 @@
   // ---------------- Export (CSV) ----------------
 
   function entriesCsv(rowsData) {
-    var header = ["Projeto", "Data", "Mês de referência", "Categoria", "Rubrica", "Descrição", "Fornecedor", "CNPJ", "Pessoa (RH)", "Cargo", "Formato", "Valor", "Pagamento", "Observações", "Link"].map(csvField).join(";");
+    var header = ["Projeto", "Data", "Mês de referência", "Categoria", "Rubrica", "Descrição", "Descrição do serviço", "Quantidade", "Fornecedor", "CNPJ", "Pessoa (RH)", "Cargo", "Formato", "Valor", "Pagamento", "Observações", "Link"].map(csvField).join(";");
     var lines = [header];
     rowsData.forEach(function (r) {
       var cnpjText = r.cnpjNA ? "Não se aplica" : (r.cnpj || "");
-      lines.push([r.projectName, fmtDate(r.date), fmtMonth(r.refMonth), r.category, r.rubrica || "", r.description, r.supplier || "", cnpjText, r.person || "", r.role || "", r.formato || "", csvNum(r.amount), r.payment || "", r.notes || "", r.link || ""].map(csvField).join(";"));
+      lines.push([r.projectName, fmtDate(r.date), fmtMonth(r.refMonth), r.category, r.rubrica || "", r.description, r.serviceDescription || "", (r.quantity != null ? csvNum(r.quantity) : ""), r.supplier || "", cnpjText, r.person || "", r.role || "", r.formato || "", csvNum(r.amount), r.payment || "", r.notes || "", r.link || ""].map(csvField).join(";"));
     });
     return "﻿" + lines.join("\r\n");
   }
@@ -2109,7 +2113,7 @@
     var p = state.projects.find(function (x) { return x.id === pid; });
     if (!p) return;
     var rowsData = p.entries.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).map(function (e) {
-      return { projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato, rubrica: e.rubrica };
+      return { projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato, rubrica: e.rubrica, serviceDescription: e.serviceDescription, quantity: e.quantity };
     });
     exportRows(rowsData, "lancamentos-" + slug(p.name));
   }
@@ -2118,7 +2122,7 @@
     var rowsData = [];
     state.projects.forEach(function (p) {
       p.entries.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).forEach(function (e) {
-        rowsData.push({ projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato, rubrica: e.rubrica });
+        rowsData.push({ projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato, rubrica: e.rubrica, serviceDescription: e.serviceDescription, quantity: e.quantity });
       });
     });
     exportRows(rowsData, "lancamentos-todos-os-projetos", true);
@@ -2278,7 +2282,8 @@
         var get = function (f) { return form.querySelector('[data-f="' + f + '"]').value; };
         var getChecked = function (f) { var el = form.querySelector('[data-f="' + f + '"]'); return !!(el && el.checked); };
         var date = get("date"), refMonth = get("refMonth"), category = get("category"), description = get("description").trim(),
-          amount = Number(get("amount")), payment = get("payment"), notes = get("notes").trim(), link = get("link").trim(), rubrica = get("rubrica");
+          amount = Number(get("amount")), payment = get("payment"), notes = get("notes").trim(), link = get("link").trim(), rubrica = get("rubrica"),
+          serviceDescription = get("serviceDescription").trim(), quantityRaw = get("quantity").trim(), quantity = quantityRaw === "" ? null : Number(quantityRaw);
         var supplierIdVal = get("supplierId");
         var supplier, cnpjNA, cnpj;
         if (supplierIdVal === "__other__") {
@@ -2333,6 +2338,8 @@
             if (role) existing.role = role; else delete existing.role;
             if (formato) existing.formato = formato; else delete existing.formato;
             if (rubrica) existing.rubrica = rubrica; else delete existing.rubrica;
+            if (serviceDescription) existing.serviceDescription = serviceDescription; else delete existing.serviceDescription;
+            if (quantity != null && !isNaN(quantity)) existing.quantity = quantity; else delete existing.quantity;
             if (attachment) existing.attachment = attachment; else delete existing.attachment;
             logHistory(p, "edit", "Lançamento editado: " + historyLabel + " (" + fmtMoney(amount) + ")");
           }
@@ -2348,6 +2355,8 @@
           if (role) newEntry.role = role;
           if (formato) newEntry.formato = formato;
           if (rubrica) newEntry.rubrica = rubrica;
+          if (serviceDescription) newEntry.serviceDescription = serviceDescription;
+          if (quantity != null && !isNaN(quantity)) newEntry.quantity = quantity;
           if (attachment) newEntry.attachment = attachment;
           p.entries.push(newEntry);
           logHistory(p, "add", "Lançamento adicionado: " + historyLabel + " (" + fmtMoney(amount) + ")");
