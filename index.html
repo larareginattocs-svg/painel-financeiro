@@ -733,6 +733,7 @@
   details.section-card > summary .chev { font-size: 12px; color: var(--ink-faint); transition: transform 0.15s ease; }
   details.section-card[open] > summary .chev { transform: rotate(90deg); }
   details.section-card > summary .summary-total { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--ink-soft); font-weight: 500; }
+  .rubrica-total-row td { font-weight: 700; background: var(--surface-sunken); border-top: 2px solid var(--border); }
 
   /* ---------- Parcelas (installments) ---------- */
   .installment-form {
@@ -885,6 +886,7 @@
   var CATEGORIES = ["Recursos Humanos", "Material Esportivo", "Divulgação", "Transporte", "Alimentação", "Serviços/Terceiros", "Locação de Espaço", "Administrativo", "Equipamentos", "Outros"];
   var PAYMENTS = ["Boleto", "Transferência", "Pix", "Cartão", "Dinheiro", "Outro"];
   var FORMATOS = ["PJ", "CLT", "TEMPORÁRIO", "BOLSA AUXÍLIO", "MEI", "DIÁRIA/CACHÊ"];
+  var RUBRICAS = ["Festival de Inferno", "Na Atividade", "Circuito Stand Up Paddle", "Conectados", "Vai Bem", "Multi Esporte", "Circuito Social de Corrida"];
   var CARGOS = ["Coordenador(a)", "Gerente Geral", "Professor(a)", "Assistente de Produção", "Técnico(a) de Enfermagem", "Estagiário(a)", "Instrutor(a)", "Auxiliar Administrativo(a)", "Motorista", "Segurança", "Nutricionista", "Fisioterapeuta", "Cozinheiro(a)"];
   var MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -1029,6 +1031,26 @@
     }).sort(function (a, b) { return b.total - a.total; });
   }
 
+  function rubricaProjectMatrix() {
+    var data = {};
+    var hasNone = false;
+    state.projects.forEach(function (p) {
+      p.entries.forEach(function (e) {
+        var r = (e.rubrica || "").trim();
+        if (!r) { hasNone = true; r = "__none__"; }
+        if (!data[r]) data[r] = { total: 0 };
+        data[r][p.id] = (data[r][p.id] || 0) + (Number(e.amount) || 0);
+        data[r].total += Number(e.amount) || 0;
+      });
+    });
+    var rowKeys = Object.keys(data).sort(function (a, b) {
+      if (a === "__none__") return 1;
+      if (b === "__none__") return -1;
+      return data[b].total - data[a].total;
+    });
+    return { rowKeys: rowKeys, data: data };
+  }
+
   function logHistory(p, action, description) {
     if (!Array.isArray(p.history)) p.history = [];
     var who = CURRENT_USER && CURRENT_USER.name ? " — por " + CURRENT_USER.name : "";
@@ -1148,7 +1170,43 @@
       "<th>Projeto</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Saldo orç.</th><th class=\"val\">Recebido</th><th class=\"val\">Saldo em caixa</th><th class=\"val\">Execução</th><th>Status</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
       renderSupplierSummary() +
+      renderRubricaSummary() +
       "</div>"
+    );
+  }
+
+  function renderRubricaSummary() {
+    var m = rubricaProjectMatrix();
+    var projectsWithEntries = state.projects.filter(function (p) { return p.entries.length > 0; });
+    var totalAll = m.rowKeys.reduce(function (sum, r) { return sum + m.data[r].total; }, 0);
+
+    var head = "<th>Rubrica</th>" + projectsWithEntries.map(function (p) {
+      return '<th class="val">' + escapeHtml(p.name) + "</th>";
+    }).join("") + '<th class="val">Total</th>';
+
+    var rows;
+    if (m.rowKeys.length === 0) {
+      rows = '<tr class="empty-row"><td colspan="' + (projectsWithEntries.length + 2) + '">Nenhum lançamento com rubrica registrado ainda.</td></tr>';
+    } else {
+      rows = m.rowKeys.map(function (r) {
+        var label = r === "__none__" ? "Sem rubrica definida" : r;
+        var cells = projectsWithEntries.map(function (p) {
+          return '<td class="val num">' + fmtMoney(m.data[r][p.id] || 0) + "</td>";
+        }).join("");
+        return "<tr><td>" + escapeHtml(label) + "</td>" + cells + '<td class="val num">' + fmtMoney(m.data[r].total) + "</td></tr>";
+      }).join("");
+      var totalRowCells = projectsWithEntries.map(function (p) {
+        var sum = m.rowKeys.reduce(function (s, r) { return s + (m.data[r][p.id] || 0); }, 0);
+        return '<td class="val num">' + fmtMoney(sum) + "</td>";
+      }).join("");
+      rows += '<tr class="rubrica-total-row"><td>Total geral</td>' + totalRowCells + '<td class="val num">' + fmtMoney(totalAll) + "</td></tr>";
+    }
+
+    return (
+      '<details class="section-card" data-rubricas>' +
+      '<summary>Gasto por rubrica <span class="summary-total">' + fmtMoney(totalAll) + "</span><span class=\"chev\">▶</span></summary>" +
+      '<div class="table-wrap"><table><thead><tr>' + head + "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "</details>"
     );
   }
 
@@ -1283,7 +1341,7 @@
       if (f.from && (e.date || "") < f.from) return false;
       if (f.to && (e.date || "") > f.to) return false;
       if (f.text) {
-        var hay = ((e.description || "") + " " + (e.notes || "") + " " + (e.supplier || "") + " " + (e.cnpj || "") + " " + (e.category || "") + " " + (e.person || "") + " " + (e.role || "") + " " + (e.formato || "")).toLowerCase();
+        var hay = ((e.description || "") + " " + (e.notes || "") + " " + (e.supplier || "") + " " + (e.cnpj || "") + " " + (e.category || "") + " " + (e.person || "") + " " + (e.role || "") + " " + (e.formato || "") + " " + (e.rubrica || "")).toLowerCase();
         if (hay.indexOf(f.text.toLowerCase()) === -1) return false;
       }
       return true;
@@ -1299,6 +1357,7 @@
     rows += '<tr data-entry="' + e.id + '">';
     rows += "<td>" + fmtDate(e.date) + "</td>";
     rows += "<td>" + escapeHtml(e.category) + "</td>";
+    rows += "<td>" + escapeHtml(e.rubrica || "—") + "</td>";
     rows += '<td class="wrap">' + escapeHtml(e.description) + (badges ? ' <span class="row-badges">' + badges + "</span>" : "") + "</td>";
     var nomeCargo = e.person ? (escapeHtml(e.person) + (e.role ? " — " + escapeHtml(e.role) : "")) : "—";
     rows += '<td class="wrap">' + nomeCargo + "</td>";
@@ -1311,7 +1370,7 @@
       '<button class="row-del" data-del-entry="' + e.id + '" data-proj="' + p.id + '" title="Excluir lançamento">✕</button>' +
       "</div></td>";
     rows += "</tr>";
-    rows += '<tr class="entry-detail-row" data-detail-row="' + e.id + '" hidden><td colspan="8">' +
+    rows += '<tr class="entry-detail-row" data-detail-row="' + e.id + '" hidden><td colspan="9">' +
       '<div class="entry-detail-grid">' +
       '<div class="detail-item"><span class="detail-label">Fornecedor</span><span class="detail-value">' + escapeHtml(e.supplier || "—") + "</span></div>" +
       '<div class="detail-item"><span class="detail-label">CNPJ</span><span class="detail-value">' + (e.cnpjNA ? '<span class="cnpj-na">Não se aplica</span>' : escapeHtml(e.cnpj || "—")) + "</span></div>" +
@@ -1333,7 +1392,7 @@
 
   function entryRowsHtml(p, list) {
     if (list.length === 0) {
-      return '<tr class="empty-row"><td colspan="8">Nenhum lançamento encontrado.</td></tr>';
+      return '<tr class="empty-row"><td colspan="9">Nenhum lançamento encontrado.</td></tr>';
     }
     // Group by mês de referência — entries without one fall into a trailing "Sem mês definido" group.
     var groups = {};
@@ -1361,7 +1420,7 @@
         bulkControls = '<div class="bulk-month-row"><input type="month" data-bulk-month-input="' + p.id + '" />' +
           '<button class="btn subtle" type="button" data-bulk-month-apply="' + p.id + '" data-bulk-ids="' + ids + '">Aplicar mês a estes ' + items.length + (items.length === 1 ? " lançamento" : " lançamentos") + "</button></div>";
       }
-      rows += '<tr class="month-group-row"><td colspan="8"><div class="month-group-cell"><span class="month-group-label">' +
+      rows += '<tr class="month-group-row"><td colspan="9"><div class="month-group-cell"><span class="month-group-label">' +
         escapeHtml(label) + '</span><span class="month-group-total num">' + fmtMoney(subtotal) + "</span></div>" + bulkControls + "</td></tr>";
       items.forEach(function (e) { rows += entryRowHtml(p, e); });
     });
@@ -1486,6 +1545,11 @@
       '<div class="field"><label>Valor (R$)</label><input type="number" step="0.01" min="0" data-f="amount" placeholder="0,00" value="' + escapeHtml(editEntry ? editEntry.amount : "") + '" /></div>' +
       '<div class="field"><label>Pagamento</label><select data-f="payment"><option value="">Selecione…</option>' + payOptions + "</select></div>" +
       "</div>" +
+      '<div class="fornecedor-cnpj-row entry-rh-inline">' +
+      '<div class="field-inline"><label>Rubrica</label><select data-f="rubrica"><option value="">Selecione…</option>' +
+      RUBRICAS.map(function (r) { return '<option value="' + escapeHtml(r) + '"' + (editEntry && editEntry.rubrica === r ? " selected" : "") + ">" + escapeHtml(r) + "</option>"; }).join("") +
+      "</select></div>" +
+      "</div>" +
       '<div class="fornecedor-cnpj-row entry-rh-inline"' + (isRH ? "" : " hidden") + ' data-rh-fields>' +
       '<div class="field-inline"><label>Pessoa (Recursos Humanos)</label>' +
       '<select data-f="personId">' +
@@ -1548,7 +1612,7 @@
       '<div class="filter-count" data-filter-count="' + p.id + '">' + filterCountText(filtered.length, entriesSorted.length) + "</div>" +
 
       '<div class="table-wrap"><table><thead><tr>' +
-      "<th>Data</th><th>Categoria</th><th class=\"wrap\">Descrição</th><th class=\"wrap\">Nome e Cargo</th><th>Formato</th><th class=\"val\">Valor</th><th>Pagamento</th><th>Ações</th>" +
+      "<th>Data</th><th>Categoria</th><th>Rubrica</th><th class=\"wrap\">Descrição</th><th class=\"wrap\">Nome e Cargo</th><th>Formato</th><th class=\"val\">Valor</th><th>Pagamento</th><th>Ações</th>" +
       "</tr></thead><tbody data-entries-body=\"" + p.id + "\">" + rows + "</tbody></table></div>" +
 
       renderHistorySection(p) +
@@ -1693,11 +1757,11 @@
   // ---------------- Export (CSV) ----------------
 
   function entriesCsv(rowsData) {
-    var header = ["Projeto", "Data", "Mês de referência", "Categoria", "Descrição", "Fornecedor", "CNPJ", "Pessoa (RH)", "Cargo", "Formato", "Valor", "Pagamento", "Observações", "Link"].map(csvField).join(";");
+    var header = ["Projeto", "Data", "Mês de referência", "Categoria", "Rubrica", "Descrição", "Fornecedor", "CNPJ", "Pessoa (RH)", "Cargo", "Formato", "Valor", "Pagamento", "Observações", "Link"].map(csvField).join(";");
     var lines = [header];
     rowsData.forEach(function (r) {
       var cnpjText = r.cnpjNA ? "Não se aplica" : (r.cnpj || "");
-      lines.push([r.projectName, fmtDate(r.date), fmtMonth(r.refMonth), r.category, r.description, r.supplier || "", cnpjText, r.person || "", r.role || "", r.formato || "", csvNum(r.amount), r.payment || "", r.notes || "", r.link || ""].map(csvField).join(";"));
+      lines.push([r.projectName, fmtDate(r.date), fmtMonth(r.refMonth), r.category, r.rubrica || "", r.description, r.supplier || "", cnpjText, r.person || "", r.role || "", r.formato || "", csvNum(r.amount), r.payment || "", r.notes || "", r.link || ""].map(csvField).join(";"));
     });
     return "﻿" + lines.join("\r\n");
   }
@@ -1724,7 +1788,7 @@
     var p = state.projects.find(function (x) { return x.id === pid; });
     if (!p) return;
     var rowsData = p.entries.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).map(function (e) {
-      return { projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato };
+      return { projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato, rubrica: e.rubrica };
     });
     exportRows(rowsData, "lancamentos-" + slug(p.name));
   }
@@ -1733,7 +1797,7 @@
     var rowsData = [];
     state.projects.forEach(function (p) {
       p.entries.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).forEach(function (e) {
-        rowsData.push({ projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato });
+        rowsData.push({ projectName: p.name, date: e.date, refMonth: e.refMonth, category: e.category, description: e.description, amount: e.amount, payment: e.payment, notes: e.notes, link: e.link, supplier: e.supplier, cnpj: e.cnpj, cnpjNA: e.cnpjNA, person: e.person, role: e.role, formato: e.formato, rubrica: e.rubrica });
       });
     });
     exportRows(rowsData, "lancamentos-todos-os-projetos");
@@ -1879,7 +1943,7 @@
         var get = function (f) { return form.querySelector('[data-f="' + f + '"]').value; };
         var getChecked = function (f) { var el = form.querySelector('[data-f="' + f + '"]'); return !!(el && el.checked); };
         var date = get("date"), refMonth = get("refMonth"), category = get("category"), description = get("description").trim(),
-          amount = Number(get("amount")), payment = get("payment"), notes = get("notes").trim(), link = get("link").trim();
+          amount = Number(get("amount")), payment = get("payment"), notes = get("notes").trim(), link = get("link").trim(), rubrica = get("rubrica");
         var supplierIdVal = get("supplierId");
         var supplier, cnpjNA, cnpj;
         if (supplierIdVal === "__other__") {
@@ -1933,6 +1997,7 @@
             if (person) existing.person = person; else delete existing.person;
             if (role) existing.role = role; else delete existing.role;
             if (formato) existing.formato = formato; else delete existing.formato;
+            if (rubrica) existing.rubrica = rubrica; else delete existing.rubrica;
             if (attachment) existing.attachment = attachment; else delete existing.attachment;
             logHistory(p, "edit", "Lançamento editado: " + historyLabel + " (" + fmtMoney(amount) + ")");
           }
@@ -1947,6 +2012,7 @@
           if (person) newEntry.person = person;
           if (role) newEntry.role = role;
           if (formato) newEntry.formato = formato;
+          if (rubrica) newEntry.rubrica = rubrica;
           if (attachment) newEntry.attachment = attachment;
           p.entries.push(newEntry);
           logHistory(p, "add", "Lançamento adicionado: " + historyLabel + " (" + fmtMoney(amount) + ")");
