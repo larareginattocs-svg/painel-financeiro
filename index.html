@@ -107,7 +107,7 @@
   }
 
   .shell {
-    max-width: 1080px;
+    max-width: 1240px;
     margin: 0 auto;
     padding: 28px 24px 80px;
   }
@@ -208,21 +208,39 @@
   .card.accent { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
   .card.accent .label { color: color-mix(in srgb, var(--brand-ink) 70%, transparent); }
 
-  /* ---------- Tabs ---------- */
+  /* ---------- Sidebar layout ---------- */
+  .app-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+  }
+  .main-content {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* ---------- Tabs (sidebar nav) ---------- */
   .tabs {
     display: flex;
-    gap: 4px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 20px;
-    overflow-x: auto;
-    padding-bottom: 1px;
+    flex-direction: column;
+    gap: 2px;
+    flex: 0 0 220px;
+    width: 220px;
+    position: sticky;
+    top: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: var(--shadow);
   }
   .tab {
     appearance: none;
     background: transparent;
     border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 14px;
+    border-left: 3px solid transparent;
+    border-radius: 8px;
+    padding: 10px 12px;
     font-family: "Barlow Condensed", sans-serif;
     font-size: 16px;
     font-weight: 600;
@@ -232,18 +250,40 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    text-align: left;
+    width: 100%;
   }
-  .tab:hover { color: var(--ink); }
-  .tab.active { color: var(--brand); border-bottom-color: var(--gold); }
+  .tab:hover { color: var(--ink); background: var(--surface-sunken); }
+  .tab.active { color: var(--brand); background: var(--brand-soft); border-left-color: var(--gold); }
   .tab .pip {
     width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0;
   }
   .tab-add {
-    margin-left: auto;
     color: var(--brand);
-    font-size: 20px;
+    font-size: 15px;
     font-weight: 700;
-    padding: 8px 12px;
+    padding: 10px 12px;
+    margin-top: 4px;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    justify-content: flex-start;
+  }
+
+  @media (max-width: 860px) {
+    .app-layout { flex-direction: column; }
+    .tabs {
+      flex-direction: row;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      width: 100%;
+      position: static;
+      border-radius: 10px;
+      gap: 4px;
+    }
+    .tab { border-left: none; border-bottom: 2px solid transparent; border-radius: 6px; }
+    .tab.active { border-left-color: transparent; border-bottom-color: var(--gold); }
+    .tab-add { border-top: none; margin-top: 0; margin-left: auto; }
   }
 
   /* ---------- Panels ---------- */
@@ -864,11 +904,13 @@
 
   <div class="cards" id="summaryCards"></div>
 
-  <div class="tabs" id="tabs"></div>
-
-  <div id="panels"></div>
-
-  <div class="footnote">Painel de Execução Financeira &middot; atualizado automaticamente a cada lançamento</div>
+  <div class="app-layout">
+    <nav class="tabs" id="tabs"></nav>
+    <div class="main-content">
+      <div id="panels"></div>
+      <div class="footnote">Painel de Execução Financeira &middot; atualizado automaticamente a cada lançamento</div>
+    </div>
+  </div>
 </div>
 
 <div class="overlay" id="overlay">
