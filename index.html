@@ -1041,9 +1041,27 @@
       <label for="newProjLaw">Lei de incentivo</label>
       <input id="newProjLaw" type="text" list="incentiveLawOptions" placeholder="Ex.: Lei Federal de Incentivo ao Esporte" />
       <datalist id="incentiveLawOptions">
-        <option value="Lei Federal de Incentivo ao Esporte (Lei nº 11.438/2006)"></option>
-        <option value="Lei de Incentivo ao Esporte — RS"></option>
-        <option value="ICMS Solidário"></option>
+        <option value="Lei Federal de Incentivo ao Esporte — LIE (Lei nº 11.438/2006)"></option>
+        <option value="Lei Rouanet — Incentivo à Cultura (Lei nº 8.313/1991)"></option>
+        <option value="Lei do Audiovisual (Lei nº 8.685/1993)"></option>
+        <option value="Lei Paulo Gustavo — Política Nacional Aldir Blanc (PNAB)"></option>
+        <option value="PRONAS/PCD — Apoio à Saúde da Pessoa com Deficiência (Federal)"></option>
+        <option value="PRONON — Apoio à Atenção Oncológica (Federal)"></option>
+        <option value="Fundo da Infância e Adolescência — FIA (Federal)"></option>
+        <option value="Fundo Nacional do Idoso"></option>
+        <option value="Lei de Incentivo à Reciclagem — LIR (Lei nº 14.260/2021)"></option>
+        <option value="Pró-Esporte RS — Lei de Incentivo ao Esporte (Estadual/RS)"></option>
+        <option value="Lei Paulista de Incentivo ao Esporte — LPIE (Estadual/SP)"></option>
+        <option value="ProAC ICMS — Incentivo à Cultura (Estadual/SP)"></option>
+        <option value="Lei de Incentivo à Cultura do Rio de Janeiro (Estadual/RJ)"></option>
+        <option value="Lei de Incentivo ao Esporte Estadual — LIE-CE (Estadual/CE)"></option>
+        <option value="Lei Estadual de Incentivo ao Esporte (Estadual/MG)"></option>
+        <option value="Fazcultura — Incentivo à Cultura (Estadual/BA)"></option>
+        <option value="ICMS Solidário / ICMS Cultural (Estadual — varia por estado)"></option>
+        <option value="ProMAC — Programa Municipal de Incentivo à Cultura (Municipal/São Paulo)"></option>
+        <option value="Lei de Incentivo Fiscal à Cultura de Porto Alegre — LC nº 283/1992 (Municipal/POA)"></option>
+        <option value="Lei Municipal de Incentivo à Cultura do Rio de Janeiro (Municipal/RJ)"></option>
+        <option value="Lei Municipal de Incentivo à Cultura de Belo Horizonte (Municipal/BH)"></option>
       </datalist>
     </div>
     <div class="modal-grid-2">
@@ -1885,7 +1903,8 @@
         '<div class="proj-meta-edit-grid">' +
         metaFields.map(function (mf) {
           var val = p[mf.key] || "";
-          return '<div class="field"><label>' + escapeHtml(mf.label) + '</label><input type="' + (mf.isDate ? "date" : "text") + '" data-project-meta-input="' + mf.key + '" value="' + escapeHtml(val) + '" /></div>';
+          var listAttr = mf.key === "incentiveLaw" ? ' list="incentiveLawOptions"' : "";
+          return '<div class="field"><label>' + escapeHtml(mf.label) + '</label><input type="' + (mf.isDate ? "date" : "text") + '"' + listAttr + ' data-project-meta-input="' + mf.key + '" value="' + escapeHtml(val) + '" /></div>';
         }).join("") +
         "</div>" +
         '<div class="modal-actions" style="justify-content:flex-start;margin-bottom:16px">' +
