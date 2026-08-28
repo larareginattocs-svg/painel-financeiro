@@ -1241,7 +1241,7 @@
         data[r].byProject[p.id] = (data[r].byProject[p.id] || 0) + amt;
         var mKey = e.refMonth || "";
         data[r].byMonth[mKey] = (data[r].byMonth[mKey] || 0) + amt;
-        data[r].entries.push({ date: e.date, refMonth: e.refMonth, projectName: p.name, description: e.description, category: e.category, amount: amt });
+        data[r].entries.push({ date: e.date, refMonth: e.refMonth, projectName: p.name, description: e.description, serviceDescription: e.serviceDescription, category: e.category, amount: amt });
       });
     });
     var rowKeys = Object.keys(data).sort(function (a, b) {
@@ -1470,7 +1470,7 @@
       }).join("");
 
       var entryRows = row.entries.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).map(function (e) {
-        return "<tr><td>" + fmtDate(e.date) + "</td><td>" + escapeHtml(e.projectName) + '</td><td class="wrap">' + escapeHtml(e.description || "—") + '</td><td class="val num">' + fmtMoney(e.amount) + "</td></tr>";
+        return "<tr><td>" + fmtDate(e.date) + "</td><td>" + escapeHtml(e.projectName) + '</td><td class="wrap">' + escapeHtml(e.description || "—") + '</td><td class="wrap">' + escapeHtml(e.serviceDescription || "—") + '</td><td class="val num">' + fmtMoney(e.amount) + "</td></tr>";
       }).join("");
 
       var key = r === "__none__" ? "__none__" : r;
@@ -1491,7 +1491,7 @@
         '<div><div class="rubrica-detail-title">Por mês</div><div class="table-wrap"><table><thead><tr><th>Mês</th><th class="val">Valor</th></tr></thead><tbody>' + monthRows + "</tbody></table></div></div>" +
         "</div>" +
         '<div class="rubrica-detail-title">Lançamentos (' + row.entries.length + ")</div>" +
-        '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Projeto</th><th class="wrap">Descrição</th><th class="val">Valor</th></tr></thead><tbody>' + entryRows + "</tbody></table></div>" +
+        '<div class="table-wrap"><table><thead><tr><th>Data</th><th>Projeto</th><th class="wrap">Descrição</th><th class="wrap">Descrição do serviço</th><th class="val">Valor</th></tr></thead><tbody>' + entryRows + "</tbody></table></div>" +
         "</div>" +
         "</div>"
       );
