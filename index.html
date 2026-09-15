@@ -397,6 +397,7 @@
   .pill.warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
   .pill.danger { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger); }
   .pill.neutral { background: var(--surface-sunken); color: var(--ink-faint); border: 1px solid var(--border); }
+  .counterpart-status-btn { cursor: pointer; font: inherit; }
   td.val.strong { font-weight: 700; color: var(--ink); }
 
   .bar-track {
@@ -412,6 +413,26 @@
   .bar-fill.danger { background: var(--danger); }
   .bar-fill.neutral { background: var(--ink-faint); }
   .card-bar { margin-top: 10px; height: 5px; }
+
+  .compare-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .compare-card {
+    display: block;
+    text-align: left;
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
+  .compare-card:hover { border-color: var(--brand); }
+  .compare-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .compare-card-name { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .compare-card-figures { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--ink-soft); }
+  .compare-card-pct { font-weight: 700; color: var(--ink); }
 
   .empty-row td { color: var(--ink-faint); text-align: center; padding: 26px 16px; }
   .empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; font-style: normal; }
@@ -737,6 +758,14 @@
     border-radius: 8px;
     background: var(--surface-sunken);
   }
+  .attach-preview-img {
+    max-width: 100%;
+    max-height: 460px;
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-sunken);
+  }
 
   .attach-field input[type="file"] {
     font-size: 13px;
@@ -944,6 +973,7 @@
   .history-item:last-child { border-bottom: none; }
   .history-item .desc { color: var(--ink); }
   .history-item .when { color: var(--ink-faint); font-family: "IBM Plex Mono", monospace; font-size: 11.5px; white-space: nowrap; }
+  .history-export-row { margin-top: 8px; }
   .history-empty { color: var(--ink-faint); font-style: italic; font-size: 13px; padding: 8px 2px; }
 
   /* ---------- Toast (export feedback) ---------- */
@@ -972,6 +1002,28 @@
   .export-btn { margin-left: auto; }
   .section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
   .section-title-row .section-title { margin-bottom: 0; }
+  .section-title-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* ---------- Relatório de prestação de contas (impressão/PDF) ---------- */
+  #printReport { display: none; }
+  .pr-header { margin-bottom: 16px; }
+  .pr-header h1 { font-size: 20px; margin: 0 0 4px; color: #1a1a2e; }
+  .pr-header h2 { font-size: 16px; margin: 0; color: #555; font-weight: 600; }
+  table.pr-meta, table.pr-summary { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12.5px; }
+  table.pr-meta th, table.pr-meta td, table.pr-summary th, table.pr-summary td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+  table.pr-meta th, table.pr-summary th { background: #f2f2f2; width: 170px; font-weight: 600; }
+  .pr-rubrica-title { font-size: 14px; margin: 18px 0 6px; padding-bottom: 4px; border-bottom: 2px solid #333; display: flex; justify-content: space-between; }
+  .pr-rubrica-total { font-weight: 700; }
+  table.pr-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 8px; }
+  table.pr-table th, table.pr-table td { border: 1px solid #ccc; padding: 5px 6px; text-align: left; }
+  table.pr-table th { background: #f2f2f2; }
+  .pr-footer { margin-top: 24px; font-size: 10.5px; color: #777; border-top: 1px solid #ccc; padding-top: 8px; }
+  @media print {
+    body > *:not(#printReport) { display: none !important; }
+    #printReport { display: block !important; color: #000; background: #fff; padding: 0; }
+    .pr-rubrica-title { break-after: avoid; }
+    table.pr-table tr { break-inside: avoid; }
+  }
 </style>
 </head>
 <body>
@@ -1106,6 +1158,8 @@
 
 <div class="toast-wrap" id="toastWrap"></div>
 
+<div id="printReport"></div>
+
 <datalist id="cargoOptions"></datalist>
 <datalist id="categoryOptions"></datalist>
 
@@ -1159,6 +1213,7 @@
     (state.projects || []).forEach(function (p) {
       if (!Array.isArray(p.installments)) p.installments = [];
       if (!Array.isArray(p.history)) p.history = [];
+      if (!Array.isArray(p.counterparts)) p.counterparts = [];
     });
     if (!Array.isArray(state.suppliers)) state.suppliers = [];
     if (!Array.isArray(state.people)) state.people = [];
@@ -1185,6 +1240,7 @@
   var activeTab = sessionStorage.getItem("painel-active-tab") || "resumo";
   var editing = null; // { pid, eid } — entry currently open in the form for editing
   var editingInstallment = null; // { pid, iid } — installment currently open in its mini-form
+  var editingCounterpart = null; // { pid, cid } — contrapartida currently open in its mini-form
   var editingSupplier = null; // id of supplier currently open in the fornecedores form
   var editingPerson = null; // id of person currently open in the recursos-humanos form
   var editingProjectName = null; // id of project whose name field is currently open for editing
@@ -1538,6 +1594,7 @@
       '<div class="' + cls + '" data-panel="resumo">' +
       alertsHtml +
       renderMonthlyChart() +
+      renderProjectComparisonCards() +
       '<div class="section-title-row"><div class="section-title">Todos os projetos</div>' +
       '<button class="btn export-btn" type="button" data-export-all>⬇ Exportar tudo (.csv)</button></div>' +
       '<div class="table-wrap projects-table-wrap"><table class="projects-table"><thead><tr>' +
@@ -1546,6 +1603,33 @@
       renderSupplierSummary() +
       renderRubricaSummary() +
       "</div>"
+    );
+  }
+
+  function renderProjectComparisonCards() {
+    if (state.projects.length === 0) return "";
+    var statusOrder = { danger: 0, warn: 1, ok: 2, neutral: 3 };
+    var list = state.projects.map(function (p) {
+      return { p: p, t: projectTotals(p) };
+    }).sort(function (a, b) {
+      var sa = statusOrder[a.t.status] != null ? statusOrder[a.t.status] : 4;
+      var sb = statusOrder[b.t.status] != null ? statusOrder[b.t.status] : 4;
+      if (sa !== sb) return sa - sb;
+      return b.t.pct - a.t.pct;
+    });
+    var cards = list.map(function (x) {
+      var p = x.p, t = x.t;
+      return (
+        '<button class="compare-card" type="button" data-goto-project="' + p.id + '">' +
+        '<div class="compare-card-head"><span class="compare-card-name">' + escapeHtml(p.name) + '</span><span class="pill ' + t.status + '">' + statusLabel(t.status) + "</span></div>" +
+        '<div class="bar-track"><div class="bar-fill ' + t.status + '" style="width:' + Math.min(100, t.pct * 100).toFixed(0) + '%"></div></div>' +
+        '<div class="compare-card-figures"><span>' + fmtMoney(t.spent) + " de " + fmtMoney(t.budget) + '</span><span class="compare-card-pct">' + fmtPct(t.pct) + "</span></div>" +
+        "</button>"
+      );
+    }).join("");
+    return (
+      '<div class="section-title-row"><div class="section-title">Comparativo entre projetos</div></div>' +
+      '<div class="compare-grid">' + cards + "</div>"
     );
   }
 
@@ -1797,7 +1881,9 @@
       "</div>" +
       (hasAttach ? '<div class="attach-preview" data-attach-preview="' + e.id + '" hidden>' +
         '<div class="attach-preview-head"><span>' + escapeHtml(e.attachment.name) + '</span><button type="button" class="btn subtle" data-close-attach="' + e.id + '">Fechar</button></div>' +
-        '<iframe data-attach-frame="' + e.id + '" title="Anexo — ' + escapeHtml(e.attachment.name) + '"></iframe>' +
+        ((e.attachment.type || "").indexOf("image/") === 0
+          ? '<img data-attach-frame="' + e.id + '" class="attach-preview-img" alt="Anexo — ' + escapeHtml(e.attachment.name) + '" />'
+          : '<iframe data-attach-frame="' + e.id + '" title="Anexo — ' + escapeHtml(e.attachment.name) + '"></iframe>') +
         "</div>" : "") +
       "</td></tr>";
     return rows;
@@ -1857,8 +1943,8 @@
   function attachFieldHtml(pid, editEntry) {
     return (
       '<div class="field full attach-field">' +
-      "<label>Anexo (PDF, até 4MB)</label>" +
-      '<input type="file" accept="application/pdf" data-attach-input="' + pid + '" />' +
+      "<label>Comprovante (PDF ou foto, até 4MB)</label>" +
+      '<input type="file" accept="application/pdf,image/*" data-attach-input="' + pid + '" />' +
       '<div data-attach-chip-wrap="' + pid + '">' + attachChipHtml(pid, editEntry) + "</div>" +
       '<div class="attach-error" data-attach-error="' + pid + '"></div>' +
       "</div>"
@@ -2044,7 +2130,10 @@
       "</div>" +
 
       '<div class="section-title-row"><div class="section-title">Lançamentos</div>' +
-      '<button class="btn export-btn" type="button" data-export-project="' + p.id + '">⬇ Exportar (.csv)</button></div>' +
+      '<div class="section-title-actions">' +
+      '<button class="btn export-btn" type="button" data-print-report="' + p.id + '">🖨️ Relatório de prestação de contas</button>' +
+      '<button class="btn export-btn" type="button" data-export-project="' + p.id + '">⬇ Exportar (.csv)</button>' +
+      "</div></div>" +
 
       '<div class="filter-bar" data-filter-bar="' + p.id + '">' +
       '<div class="field filter-text"><label>Buscar</label><input type="text" data-flt="text" placeholder="Descrição ou observação…" value="' + escapeHtml(f.text) + '" /></div>' +
@@ -2060,6 +2149,7 @@
       "<th>Data</th><th>Categoria</th><th>Rubrica</th><th class=\"wrap\">Descrição</th><th class=\"wrap\">Nome e Cargo</th><th>Formato</th><th class=\"val\">Valor</th><th>Pagamento</th><th>Ações</th>" +
       "</tr></thead><tbody data-entries-body=\"" + p.id + "\">" + rows + "</tbody></table></div>" +
 
+      renderCounterpartsSection(p) +
       renderHistorySection(p) +
       "</div>"
     );
@@ -2105,6 +2195,49 @@
     );
   }
 
+  function renderCounterpartsSection(p) {
+    var editCp = (editingCounterpart && editingCounterpart.pid === p.id)
+      ? p.counterparts.find(function (c) { return c.id === editingCounterpart.cid; })
+      : null;
+    var list = p.counterparts.slice().sort(function (a, b) { return (a.dueDate || "9999").localeCompare(b.dueDate || "9999"); });
+    var delivered = list.filter(function (c) { return c.status === "entregue"; }).length;
+    var rows = "";
+    if (list.length === 0) {
+      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">🤝</span><span>Nenhuma contrapartida cadastrada ainda.</span></div></td></tr>';
+    } else {
+      var today = new Date().toISOString().slice(0, 10);
+      list.forEach(function (c) {
+        var overdue = c.status !== "entregue" && c.dueDate && c.dueDate < today;
+        rows += '<tr>';
+        rows += '<td class="wrap">' + escapeHtml(c.description || "") + "</td>";
+        rows += "<td>" + (c.dueDate ? fmtDate(c.dueDate) : "—") + (overdue ? ' <span class="pill danger" style="margin-left:6px">Atrasada</span>' : "") + "</td>";
+        rows += '<td><button class="pill counterpart-status-btn ' + (c.status === "entregue" ? "ok" : "warn") + '" type="button" data-toggle-counterpart-status="' + c.id + '" data-proj="' + p.id + '" title="Clique para alternar o status">' + (c.status === "entregue" ? "Entregue" : "Pendente") + "</button></td>";
+        rows += '<td><div class="row-actions">' +
+          '<button class="row-edit" data-edit-counterpart="' + c.id + '" data-proj="' + p.id + '" title="Editar contrapartida">✎</button>' +
+          '<button class="row-del" data-del-counterpart="' + c.id + '" data-proj="' + p.id + '" title="Excluir contrapartida">✕</button>' +
+          "</div></td>";
+        rows += "</tr>";
+      });
+    }
+    return (
+      '<details class="section-card"' + (editCp ? " open" : "") + ' data-counterparts="' + p.id + '">' +
+      '<summary>Contrapartidas de patrocínio <span class="summary-total">' + delivered + "/" + list.length + " entregues</span><span class=\"chev\">▶</span></summary>" +
+      '<div class="installment-form" data-counterpart-form="' + p.id + '">' +
+      '<div class="field full"><label>Descrição da contrapartida</label><input type="text" data-cf="description" placeholder="Ex.: Logo em material de divulgação" value="' + escapeHtml(editCp ? editCp.description : "") + '" /></div>' +
+      '<div class="field"><label>Prazo</label><input type="date" data-cf="dueDate" value="' + escapeHtml(editCp ? (editCp.dueDate || "") : "") + '" /></div>' +
+      '<div class="field"><label>Status</label><select data-cf="status"><option value="pendente"' + (!editCp || editCp.status !== "entregue" ? " selected" : "") + '>Pendente</option><option value="entregue"' + (editCp && editCp.status === "entregue" ? " selected" : "") + ">Entregue</option></select></div>" +
+      '<div style="display:flex;gap:8px">' +
+      (editCp ? '<button class="btn subtle" type="button" data-cancel-counterpart="' + p.id + '">Cancelar</button>' : "") +
+      '<button class="btn" type="button" data-submit-counterpart="' + p.id + '">' + (editCp ? "Salvar" : "Adicionar") + '</button>' +
+      "</div>" +
+      "</div>" +
+      '<div class="table-wrap"><table><thead><tr>' +
+      "<th class=\"wrap\">Contrapartida</th><th>Prazo</th><th>Status</th><th>Ações</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "</details>"
+    );
+  }
+
   function renderHistorySection(p) {
     var items = (p.history || []);
     var list = "";
@@ -2118,9 +2251,122 @@
     return (
       '<details class="section-card" data-history="' + p.id + '">' +
       '<summary>Histórico de alterações <span class="summary-total">' + items.length + (items.length === 1 ? " registro" : " registros") + '</span><span class="chev">▶</span></summary>' +
+      (items.length ? '<div class="history-export-row"><button class="btn subtle" type="button" data-export-history="' + p.id + '">⬇ Exportar histórico (.csv)</button></div>' : "") +
       list +
       "</details>"
     );
+  }
+
+  // ---------------- Relatório de prestação de contas (impressão/PDF) ----------------
+
+  function projectRubricaBreakdown(p) {
+    var data = {};
+    p.entries.forEach(function (e) {
+      var r = (e.rubrica || "").trim() || "__none__";
+      if (!data[r]) data[r] = { total: 0, entries: [] };
+      data[r].total += Number(e.amount) || 0;
+      data[r].entries.push(e);
+    });
+    var rowKeys = Object.keys(data).sort(function (a, b) {
+      if (a === "__none__") return 1;
+      if (b === "__none__") return -1;
+      return data[b].total - data[a].total;
+    });
+    return { rowKeys: rowKeys, data: data };
+  }
+
+  function buildPrestacaoContasReport(p) {
+    var t = projectTotals(p);
+    var received = installmentsTotal(p);
+    var cashBalance = received - t.spent;
+    var metaFields = [
+      { key: "incentiveLaw", label: "Lei de incentivo" },
+      { key: "projectNumber", label: "Número do projeto" },
+      { key: "deadline", label: "Prazo", isDate: true },
+      { key: "sponsor", label: "Patrocinador" },
+      { key: "responsibleCompany", label: "Empresa responsável" }
+    ];
+    var metaRows = metaFields.filter(function (mf) { return p[mf.key]; }).map(function (mf) {
+      var val = mf.isDate ? fmtDate(p[mf.key]) : p[mf.key];
+      return "<tr><th>" + escapeHtml(mf.label) + "</th><td>" + escapeHtml(val) + "</td></tr>";
+    }).join("");
+
+    var breakdown = projectRubricaBreakdown(p);
+    var rubricaSections = breakdown.rowKeys.map(function (r) {
+      var label = r === "__none__" ? "Sem rubrica definida" : r;
+      var row = breakdown.data[r];
+      var entryRows = row.entries.slice().sort(function (a, b) { return (a.date || "").localeCompare(b.date || ""); }).map(function (e) {
+        var quem = e.person ? (e.person + (e.role ? " — " + e.role : "")) : (e.supplier || "—");
+        var comprovante = (e.attachment && e.attachment.dataUrl) ? "Sim" : "—";
+        return "<tr>" +
+          "<td>" + fmtDate(e.date) + "</td>" +
+          "<td>" + escapeHtml(entryLabel(e)) + "</td>" +
+          "<td>" + escapeHtml(e.serviceDescription || "—") + "</td>" +
+          "<td>" + escapeHtml(quem) + "</td>" +
+          '<td class="val num">' + fmtMoney(e.amount) + "</td>" +
+          "<td>" + comprovante + "</td>" +
+          "</tr>";
+      }).join("");
+      return (
+        '<h3 class="pr-rubrica-title"><span>' + escapeHtml(label) + '</span><span class="pr-rubrica-total">' + fmtMoney(row.total) + "</span></h3>" +
+        '<table class="pr-table"><thead><tr><th>Data</th><th>Descrição</th><th>Descrição do serviço</th><th>Fornecedor/Pessoa</th><th class="val">Valor</th><th>Comprovante</th></tr></thead><tbody>' + entryRows + "</tbody></table>"
+      );
+    }).join("");
+
+    var generatedAt = fmtDateTime(new Date().toISOString());
+    var who = CURRENT_USER && CURRENT_USER.name ? escapeHtml(CURRENT_USER.name) : "";
+
+    return (
+      '<div class="pr-report">' +
+      '<div class="pr-header"><h1>Relatório de Prestação de Contas</h1><h2>' + escapeHtml(p.name) + "</h2></div>" +
+      (metaRows ? '<table class="pr-meta"><tbody>' + metaRows + "</tbody></table>" : "") +
+      '<table class="pr-summary"><tbody>' +
+      "<tr><th>Orçamento total</th><td>" + fmtMoney(t.budget) + "</td><th>Recebido (parcelas)</th><td>" + fmtMoney(received) + "</td></tr>" +
+      "<tr><th>Gasto até agora</th><td>" + fmtMoney(t.spent) + "</td><th>Saldo em caixa</th><td>" + fmtMoney(cashBalance) + "</td></tr>" +
+      "<tr><th>Saldo do orçamento</th><td>" + fmtMoney(t.balance) + "</td><th>% executado</th><td>" + fmtPct(t.pct) + "</td></tr>" +
+      "</tbody></table>" +
+      (rubricaSections || "<p>Nenhum lançamento registrado ainda.</p>") +
+      '<div class="pr-footer">Gerado em ' + generatedAt + (who ? " por " + who : "") + "</div>" +
+      "</div>"
+    );
+  }
+
+  function printPrestacaoContas(pid) {
+    var p = state.projects.find(function (x) { return x.id === pid; });
+    if (!p) return;
+    var el = document.getElementById("printReport");
+    if (!el) return;
+    el.innerHTML = buildPrestacaoContasReport(p);
+    window.print();
+  }
+
+  function historyLogCsv(p) {
+    var header = ["Data/hora", "Ação", "Descrição"].map(csvField).join(";");
+    var lines = [header];
+    (p.history || []).forEach(function (h) {
+      lines.push([fmtDateTime(h.ts), h.action || "", h.description || ""].map(csvField).join(";"));
+    });
+    return "﻿" + lines.join("\r\n");
+  }
+
+  function exportProjectHistory(pid) {
+    var p = state.projects.find(function (x) { return x.id === pid; });
+    if (!p) return;
+    try {
+      var csv = historyLogCsv(p);
+      var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "historico-" + slug(p.name) + ".csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      showToast("Histórico exportado com sucesso.");
+    } catch (e) {
+      showToast("Não foi possível exportar o histórico.", true);
+    }
   }
 
   function filterCountText(shown, total) {
@@ -2312,7 +2558,7 @@
       var suffix = 1;
       var baseId = id;
       while (state.projects.some(function (p) { return p.id === id; })) { suffix++; id = baseId + "-" + suffix; }
-      var newProj = { id: id, name: name, budget: Number(budgetEl.value) || 0, entries: [], installments: [], history: [] };
+      var newProj = { id: id, name: name, budget: Number(budgetEl.value) || 0, entries: [], installments: [], history: [], counterparts: [] };
       var incentiveLaw = lawEl.value.trim(), projectNumber = numberEl.value.trim(), deadline = deadlineEl.value, sponsor = sponsorEl.value.trim(), responsibleCompany = companyEl.value.trim();
       if (incentiveLaw) newProj.incentiveLaw = incentiveLaw;
       if (projectNumber) newProj.projectNumber = projectNumber;
@@ -2353,6 +2599,12 @@
 
   function bindPanelEvents() {
     var panels = document.getElementById("panels");
+
+    panels.querySelectorAll("[data-goto-project]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        switchTab(btn.getAttribute("data-goto-project"));
+      });
+    });
 
     panels.querySelectorAll("[data-toggle-rubrica]").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -2689,6 +2941,62 @@
       });
     });
 
+    panels.querySelectorAll("[data-submit-counterpart]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-submit-counterpart");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        if (!p) return;
+        var form = panels.querySelector('[data-counterpart-form="' + pid + '"]');
+        var get = function (f) { return form.querySelector('[data-cf="' + f + '"]').value; };
+        var description = get("description").trim(), dueDate = get("dueDate"), status = get("status");
+        if (!description) {
+          form.style.outline = "1px solid var(--danger)";
+          setTimeout(function () { form.style.outline = ""; }, 900);
+          return;
+        }
+        if (editingCounterpart && editingCounterpart.pid === pid) {
+          var existing = p.counterparts.find(function (x) { return x.id === editingCounterpart.cid; });
+          if (existing) {
+            existing.description = description; existing.dueDate = dueDate; existing.status = status;
+            logHistory(p, "edit", "Contrapartida editada: " + description);
+          }
+          editingCounterpart = null;
+        } else {
+          p.counterparts.push({ id: "cp" + Date.now() + Math.floor(Math.random() * 1000), description: description, dueDate: dueDate, status: status || "pendente" });
+          logHistory(p, "add", "Contrapartida cadastrada: " + description);
+        }
+        renderAll();
+        var details = panels.querySelector('[data-counterparts="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+      });
+    });
+
+    panels.querySelectorAll("[data-cancel-counterpart]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingCounterpart = null;
+        renderAll();
+        var details = panels.querySelector('[data-counterparts="' + btn.getAttribute("data-cancel-counterpart") + '"]');
+        if (details) details.open = true;
+      });
+    });
+
+    panels.querySelectorAll("[data-toggle-counterpart-status]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var cid = btn.getAttribute("data-toggle-counterpart-status");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var cp = p && p.counterparts.find(function (x) { return x.id === cid; });
+        if (!cp) return;
+        cp.status = cp.status === "entregue" ? "pendente" : "entregue";
+        logHistory(p, "edit", "Contrapartida " + (cp.status === "entregue" ? "marcada como entregue" : "marcada como pendente") + ": " + cp.description);
+        renderAll();
+        var details = panels.querySelector('[data-counterparts="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+      });
+    });
+
     panels.querySelectorAll("[data-export-project]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         exportProject(btn.getAttribute("data-export-project"));
@@ -2696,6 +3004,16 @@
     });
     panels.querySelectorAll("[data-export-all]").forEach(function (btn) {
       btn.addEventListener("click", exportAllProjects);
+    });
+    panels.querySelectorAll("[data-print-report]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        printPrestacaoContas(btn.getAttribute("data-print-report"));
+      });
+    });
+    panels.querySelectorAll("[data-export-history]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        exportProjectHistory(btn.getAttribute("data-export-history"));
+      });
     });
 
     panels.querySelectorAll("[data-attach-input]").forEach(function (input) {
@@ -2705,8 +3023,10 @@
         if (errEl) errEl.textContent = "";
         var file = input.files && input.files[0];
         if (!file) return;
-        if (file.type && file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
-          if (errEl) errEl.textContent = "Envie um arquivo PDF.";
+        var isPdf = (file.type && file.type === "application/pdf") || /\.pdf$/i.test(file.name);
+        var isImage = (file.type && file.type.indexOf("image/") === 0) || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name);
+        if (!isPdf && !isImage) {
+          if (errEl) errEl.textContent = "Envie um arquivo PDF ou uma foto/imagem.";
           input.value = "";
           return;
         }
@@ -2717,7 +3037,7 @@
         }
         var reader = new FileReader();
         reader.onload = function () {
-          pendingAttachment[pid] = { name: file.name, dataUrl: reader.result };
+          pendingAttachment[pid] = { name: file.name, dataUrl: reader.result, type: file.type || (isPdf ? "application/pdf" : "image/*") };
           refreshAttachChip(pid);
         };
         reader.onerror = function () {
@@ -2960,6 +3280,33 @@
       });
     });
 
+    container.querySelectorAll("[data-edit-counterpart]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var cid = btn.getAttribute("data-edit-counterpart");
+        editingCounterpart = { pid: pid, cid: cid };
+        renderAll();
+        var details = document.querySelector('[data-counterparts="' + pid + '"]');
+        if (details) { details.open = true; details.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      });
+    });
+
+    container.querySelectorAll("[data-del-counterpart]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var cid = btn.getAttribute("data-del-counterpart");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        if (!p) return;
+        var cp = p.counterparts.find(function (x) { return x.id === cid; });
+        if (!cp) return;
+        pendingDelete = { pid: pid, id: cid, kind: "counterpart" };
+        document.getElementById("confirmTitle").textContent = "Excluir contrapartida";
+        var msg = document.getElementById("confirmMessage");
+        msg.textContent = "Excluir a contrapartida “" + cp.description + "”? Essa ação não pode ser desfeita.";
+        document.getElementById("confirmOverlay").classList.add("open");
+      });
+    });
+
     container.querySelectorAll("[data-toggle-attach]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var pid = btn.getAttribute("data-proj");
@@ -3088,6 +3435,11 @@
       p.installments = p.installments.filter(function (x) { return x.id !== id; });
       if (inst) logHistory(p, "delete", "Parcela excluída: " + fmtMoney(inst.amount) + " (" + fmtDate(inst.date) + ")");
       if (editingInstallment && editingInstallment.pid === pid && editingInstallment.iid === id) editingInstallment = null;
+    } else if (kind === "counterpart") {
+      var cp = p.counterparts.find(function (x) { return x.id === id; });
+      p.counterparts = p.counterparts.filter(function (x) { return x.id !== id; });
+      if (cp) logHistory(p, "delete", "Contrapartida excluída: " + cp.description);
+      if (editingCounterpart && editingCounterpart.pid === pid && editingCounterpart.cid === id) editingCounterpart = null;
     } else {
       var entry = p.entries.find(function (x) { return x.id === id; });
       p.entries = p.entries.filter(function (x) { return x.id !== id; });
