@@ -1018,11 +1018,23 @@
   table.pr-table th, table.pr-table td { border: 1px solid #ccc; padding: 5px 6px; text-align: left; }
   table.pr-table th { background: #f2f2f2; }
   .pr-footer { margin-top: 24px; font-size: 10.5px; color: #777; border-top: 1px solid #ccc; padding-top: 8px; }
+  table.pr-total-geral { width: 100%; border-collapse: collapse; margin: 4px 0 16px; font-size: 12.5px; }
+  table.pr-total-geral th, table.pr-total-geral td { border: 2px solid #333; padding: 7px 8px; text-align: left; font-weight: 700; }
+  .pr-section-title { font-size: 14px; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #333; }
+  .pr-signature { margin-top: 48px; display: flex; gap: 40px; flex-wrap: wrap; }
+  .pr-signature-line { flex: 1 1 260px; border-top: 1px solid #333; padding-top: 6px; font-size: 11.5px; color: #555; text-align: center; }
+  .pr-signature-date { flex: 0 1 180px; }
+  .pr-attach-page { break-before: page; padding-top: 12px; }
+  .pr-attach-head { font-size: 12.5px; font-weight: 700; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 6px; }
+  .pr-attach-img { max-width: 100%; max-height: 900px; display: block; margin: 0 auto; }
+  .pr-attach-frame { width: 100%; height: 760px; border: 1px solid #ccc; }
+  .pr-attach-fallback { font-size: 10.5px; color: #777; margin-top: 8px; }
   @media print {
     body > *:not(#printReport) { display: none !important; }
     #printReport { display: block !important; color: #000; background: #fff; padding: 0; }
     .pr-rubrica-title { break-after: avoid; }
     table.pr-table tr { break-inside: avoid; }
+    .pr-signature { break-inside: avoid; }
   }
 </style>
 </head>
@@ -1152,6 +1164,21 @@
     <div class="modal-actions">
       <button class="btn subtle" id="cancelDeleteEntry" type="button">Cancelar</button>
       <button class="btn" id="confirmDeleteEntry" type="button" style="background:var(--danger);border-color:var(--danger)">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="reportRangeOverlay">
+  <div class="modal">
+    <h3>Relatório de prestação de contas</h3>
+    <p style="color:var(--ink-soft);font-size:13px;margin:0 0 10px;">Deixe em branco para incluir todos os lançamentos, ou defina um período (ex.: um trimestre da prestação de contas).</p>
+    <div class="modal-grid-2">
+      <div class="field"><label for="reportFrom">De</label><input type="date" id="reportFrom" /></div>
+      <div class="field"><label for="reportTo">Até</label><input type="date" id="reportTo" /></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn subtle" id="cancelReportRange" type="button">Cancelar</button>
+      <button class="btn" id="confirmReportRange" type="button">Gerar relatório</button>
     </div>
   </div>
 </div>
@@ -2259,9 +2286,14 @@
 
   // ---------------- Relatório de prestação de contas (impressão/PDF) ----------------
 
-  function projectRubricaBreakdown(p) {
+  function projectRubricaBreakdown(p, from, to) {
     var data = {};
-    p.entries.forEach(function (e) {
+    var entries = p.entries.filter(function (e) {
+      if (from && (e.date || "") < from) return false;
+      if (to && (e.date || "") > to) return false;
+      return true;
+    });
+    entries.forEach(function (e) {
       var r = (e.rubrica || "").trim() || "__none__";
       if (!data[r]) data[r] = { total: 0, entries: [] };
       data[r].total += Number(e.amount) || 0;
@@ -2272,10 +2304,31 @@
       if (b === "__none__") return -1;
       return data[b].total - data[a].total;
     });
-    return { rowKeys: rowKeys, data: data };
+    return { rowKeys: rowKeys, data: data, entries: entries };
   }
 
-  function buildPrestacaoContasReport(p) {
+  function attachmentPagesHtml(entries) {
+    var withAttach = entries.filter(function (e) { return e.attachment && e.attachment.dataUrl; });
+    if (!withAttach.length) return "";
+    return withAttach.map(function (e) {
+      var isImage = (e.attachment.type || "").indexOf("image/") === 0;
+      var titleBits = [fmtDate(e.date), entryLabel(e), fmtMoney(e.amount)].join(" — ");
+      var body = isImage
+        ? '<img class="pr-attach-img" src="' + e.attachment.dataUrl + '" alt="' + escapeHtml(e.attachment.name) + '" />'
+        : ('<iframe class="pr-attach-frame" src="' + e.attachment.dataUrl + '" title="' + escapeHtml(e.attachment.name) + '"></iframe>' +
+           '<p class="pr-attach-fallback">Se o comprovante em PDF não aparecer acima na impressão, abra-o pelo painel em Lançamentos → “Ver” no anexo.</p>');
+      return (
+        '<div class="pr-attach-page">' +
+        '<div class="pr-attach-head">Comprovante — ' + escapeHtml(titleBits) + " — " + escapeHtml(e.attachment.name) + "</div>" +
+        body +
+        "</div>"
+      );
+    }).join("");
+  }
+
+  function buildPrestacaoContasReport(p, opts) {
+    opts = opts || {};
+    var from = opts.from || "", to = opts.to || "";
     var t = projectTotals(p);
     var received = installmentsTotal(p);
     var cashBalance = received - t.spent;
@@ -2290,31 +2343,61 @@
       var val = mf.isDate ? fmtDate(p[mf.key]) : p[mf.key];
       return "<tr><th>" + escapeHtml(mf.label) + "</th><td>" + escapeHtml(val) + "</td></tr>";
     }).join("");
+    if (from || to) {
+      var periodoVal = (from ? fmtDate(from) : "início") + " a " + (to ? fmtDate(to) : "hoje");
+      metaRows += "<tr><th>Período do relatório</th><td>" + escapeHtml(periodoVal) + "</td></tr>";
+    }
 
-    var breakdown = projectRubricaBreakdown(p);
+    var breakdown = projectRubricaBreakdown(p, from, to);
+    var periodTotal = breakdown.entries.reduce(function (sum, e) { return sum + (Number(e.amount) || 0); }, 0);
     var rubricaSections = breakdown.rowKeys.map(function (r) {
       var label = r === "__none__" ? "Sem rubrica definida" : r;
       var row = breakdown.data[r];
       var entryRows = row.entries.slice().sort(function (a, b) { return (a.date || "").localeCompare(b.date || ""); }).map(function (e) {
         var quem = e.person ? (e.person + (e.role ? " — " + e.role : "")) : (e.supplier || "—");
+        var cnpj = e.cnpjNA ? "Não se aplica" : (e.cnpj || "—");
         var comprovante = (e.attachment && e.attachment.dataUrl) ? "Sim" : "—";
         return "<tr>" +
           "<td>" + fmtDate(e.date) + "</td>" +
           "<td>" + escapeHtml(entryLabel(e)) + "</td>" +
           "<td>" + escapeHtml(e.serviceDescription || "—") + "</td>" +
           "<td>" + escapeHtml(quem) + "</td>" +
+          "<td>" + escapeHtml(cnpj) + "</td>" +
           '<td class="val num">' + fmtMoney(e.amount) + "</td>" +
           "<td>" + comprovante + "</td>" +
           "</tr>";
       }).join("");
       return (
         '<h3 class="pr-rubrica-title"><span>' + escapeHtml(label) + '</span><span class="pr-rubrica-total">' + fmtMoney(row.total) + "</span></h3>" +
-        '<table class="pr-table"><thead><tr><th>Data</th><th>Descrição</th><th>Descrição do serviço</th><th>Fornecedor/Pessoa</th><th class="val">Valor</th><th>Comprovante</th></tr></thead><tbody>' + entryRows + "</tbody></table>"
+        '<table class="pr-table"><thead><tr><th>Data</th><th>Descrição</th><th>Descrição do serviço</th><th>Fornecedor/Pessoa</th><th>CNPJ</th><th class="val">Valor</th><th>Comprovante</th></tr></thead><tbody>' + entryRows + "</tbody></table>"
       );
     }).join("");
 
+    var totalGeralHtml = breakdown.entries.length
+      ? '<table class="pr-total-geral"><tbody><tr><th>' + (from || to ? "Total do período" : "Total geral") + '</th><td class="val num">' + fmtMoney(periodTotal) + "</td></tr></tbody></table>"
+      : "";
+
+    var counterparts = (p.counterparts || []).slice().sort(function (a, b) { return (a.dueDate || "9999").localeCompare(b.dueDate || "9999"); });
+    var counterpartsHtml = "";
+    if (counterparts.length) {
+      var cpRows = counterparts.map(function (c) {
+        return "<tr><td>" + escapeHtml(c.description || "") + "</td><td>" + (c.dueDate ? fmtDate(c.dueDate) : "—") + "</td><td>" + (c.status === "entregue" ? "Entregue" : "Pendente") + "</td></tr>";
+      }).join("");
+      counterpartsHtml =
+        '<h3 class="pr-section-title">Contrapartidas de patrocínio</h3>' +
+        '<table class="pr-table"><thead><tr><th>Contrapartida</th><th>Prazo</th><th>Status</th></tr></thead><tbody>' + cpRows + "</tbody></table>";
+    }
+
+    var attachPages = attachmentPagesHtml(breakdown.entries);
+
     var generatedAt = fmtDateTime(new Date().toISOString());
     var who = CURRENT_USER && CURRENT_USER.name ? escapeHtml(CURRENT_USER.name) : "";
+
+    var signatureHtml =
+      '<div class="pr-signature">' +
+      '<div class="pr-signature-line"><span>Responsável pela prestação de contas</span></div>' +
+      '<div class="pr-signature-line pr-signature-date"><span>Data: ____ / ____ / ______</span></div>' +
+      "</div>";
 
     return (
       '<div class="pr-report">' +
@@ -2325,19 +2408,35 @@
       "<tr><th>Gasto até agora</th><td>" + fmtMoney(t.spent) + "</td><th>Saldo em caixa</th><td>" + fmtMoney(cashBalance) + "</td></tr>" +
       "<tr><th>Saldo do orçamento</th><td>" + fmtMoney(t.balance) + "</td><th>% executado</th><td>" + fmtPct(t.pct) + "</td></tr>" +
       "</tbody></table>" +
-      (rubricaSections || "<p>Nenhum lançamento registrado ainda.</p>") +
+      (rubricaSections || "<p>Nenhum lançamento no período selecionado.</p>") +
+      totalGeralHtml +
+      counterpartsHtml +
+      signatureHtml +
       '<div class="pr-footer">Gerado em ' + generatedAt + (who ? " por " + who : "") + "</div>" +
+      attachPages +
       "</div>"
     );
   }
 
-  function printPrestacaoContas(pid) {
+  function printPrestacaoContas(pid, from, to) {
     var p = state.projects.find(function (x) { return x.id === pid; });
     if (!p) return;
     var el = document.getElementById("printReport");
     if (!el) return;
-    el.innerHTML = buildPrestacaoContasReport(p);
+    el.innerHTML = buildPrestacaoContasReport(p, { from: from, to: to });
     window.print();
+  }
+
+  var pendingReportPid = null;
+
+  function openReportRangeModal(pid) {
+    pendingReportPid = pid;
+    var fromEl = document.getElementById("reportFrom");
+    var toEl = document.getElementById("reportTo");
+    if (fromEl) fromEl.value = "";
+    if (toEl) toEl.value = "";
+    var overlay = document.getElementById("reportRangeOverlay");
+    if (overlay) overlay.classList.add("open");
   }
 
   function historyLogCsv(p) {
@@ -2583,6 +2682,22 @@
       if (e.target.id === "confirmOverlay") { pendingDelete = null; e.currentTarget.classList.remove("open"); }
     });
     document.getElementById("confirmDeleteEntry").addEventListener("click", doPendingDelete);
+
+    document.getElementById("cancelReportRange").addEventListener("click", function () {
+      pendingReportPid = null;
+      document.getElementById("reportRangeOverlay").classList.remove("open");
+    });
+    document.getElementById("reportRangeOverlay").addEventListener("click", function (e) {
+      if (e.target.id === "reportRangeOverlay") { pendingReportPid = null; e.currentTarget.classList.remove("open"); }
+    });
+    document.getElementById("confirmReportRange").addEventListener("click", function () {
+      if (!pendingReportPid) return;
+      var from = document.getElementById("reportFrom").value;
+      var to = document.getElementById("reportTo").value;
+      document.getElementById("reportRangeOverlay").classList.remove("open");
+      printPrestacaoContas(pendingReportPid, from, to);
+      pendingReportPid = null;
+    });
   }
 
   function openModal() {
@@ -3007,7 +3122,7 @@
     });
     panels.querySelectorAll("[data-print-report]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        printPrestacaoContas(btn.getAttribute("data-print-report"));
+        openReportRangeModal(btn.getAttribute("data-print-report"));
       });
     });
     panels.querySelectorAll("[data-export-history]").forEach(function (btn) {
