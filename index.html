@@ -491,8 +491,10 @@
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; box-shadow: var(--shadow); }
   .stat .label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); font-weight: 600; }
   .stat .value { font-size: 18px; font-weight: 600; margin-top: 4px; }
+  .stat.budget .value { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 4px; white-space: nowrap; }
   .stat.budget .value input {
-    width: 100%;
+    flex: 0 0 auto;
+    min-width: 0;
     border: none;
     background: transparent;
     font: inherit;
@@ -1213,6 +1215,19 @@
     }
     var n = parseFloat(str);
     return isNaN(n) ? 0 : n;
+  }
+  function measureTextWidth(text, font) {
+    var canvas = measureTextWidth._canvas || (measureTextWidth._canvas = document.createElement("canvas"));
+    var ctx = canvas.getContext("2d");
+    ctx.font = font;
+    return ctx.measureText(text).width;
+  }
+  function autosizeBudgetInput(input) {
+    var cs = getComputedStyle(input);
+    var font = cs.fontStyle + " " + cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
+    var text = input.value || "0";
+    var w = measureTextWidth(text, font);
+    input.style.width = Math.ceil(w) + 10 + "px";
   }
   function fmtPct(n) {
     if (!isFinite(n)) return "—";
@@ -2351,13 +2366,18 @@
     });
 
     panels.querySelectorAll("[data-budget-input]").forEach(function (input) {
+      autosizeBudgetInput(input);
       input.addEventListener("focus", function () {
         var pid = input.getAttribute("data-budget-input");
         var p = state.projects.find(function (x) { return x.id === pid; });
         if (!p) return;
         var raw = Number(p.budget) || 0;
         input.value = raw === 0 ? "" : String(raw);
+        autosizeBudgetInput(input);
         setTimeout(function () { input.select(); }, 0);
+      });
+      input.addEventListener("input", function () {
+        autosizeBudgetInput(input);
       });
       input.addEventListener("blur", function () {
         var pid = input.getAttribute("data-budget-input");
@@ -2367,6 +2387,7 @@
         var newBudget = parseMoneyInput(input.value);
         p.budget = newBudget;
         input.value = fmtMoneyPlain(newBudget);
+        autosizeBudgetInput(input);
         if (oldBudget !== newBudget) {
           logHistory(p, "budget", "Orçamento alterado de " + fmtMoney(oldBudget) + " para " + fmtMoney(newBudget));
           renderAll();
