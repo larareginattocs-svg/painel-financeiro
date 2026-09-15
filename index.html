@@ -1271,6 +1271,13 @@
     return { ok: "Em dia", warn: "Atenção", danger: "Estourou", neutral: "Sem orçamento" }[status] || "—";
   }
 
+  function entryLabel(entry) {
+    if (!entry) return "lançamento";
+    if (entry.description) return entry.description;
+    if (entry.person) return entry.person + (entry.role ? " — " + entry.role : "");
+    return entry.category || "lançamento";
+  }
+
   function installmentsTotal(p) {
     var total = 0;
     (p.installments || []).forEach(function (i) { total += Number(i.amount) || 0; });
@@ -2872,7 +2879,7 @@
         pendingDelete = { pid: pid, id: eid, kind: "entry" };
         document.getElementById("confirmTitle").textContent = "Excluir lançamento";
         var msg = document.getElementById("confirmMessage");
-        msg.textContent = "Excluir “" + entry.description + "” (" + fmtMoney(entry.amount) + ")? Essa ação não pode ser desfeita.";
+        msg.textContent = "Excluir “" + entryLabel(entry) + "” (" + fmtMoney(entry.amount) + ")? Essa ação não pode ser desfeita.";
         document.getElementById("confirmOverlay").classList.add("open");
       });
     });
@@ -3035,7 +3042,7 @@
     } else {
       var entry = p.entries.find(function (x) { return x.id === id; });
       p.entries = p.entries.filter(function (x) { return x.id !== id; });
-      if (entry) logHistory(p, "delete", "Lançamento excluído: " + entry.description + " (" + fmtMoney(entry.amount) + ")");
+      if (entry) logHistory(p, "delete", "Lançamento excluído: " + entryLabel(entry) + " (" + fmtMoney(entry.amount) + ")");
       if (editing && editing.pid === pid && editing.eid === id) editing = null;
     }
     renderAll();
