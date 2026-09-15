@@ -1024,11 +1024,7 @@
   .pr-signature { margin-top: 48px; display: flex; gap: 40px; flex-wrap: wrap; }
   .pr-signature-line { flex: 1 1 260px; border-top: 1px solid #333; padding-top: 6px; font-size: 11.5px; color: #555; text-align: center; }
   .pr-signature-date { flex: 0 1 180px; }
-  .pr-attach-page { break-before: page; padding-top: 12px; }
-  .pr-attach-head { font-size: 12.5px; font-weight: 700; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 6px; }
-  .pr-attach-img { max-width: 100%; max-height: 900px; display: block; margin: 0 auto; }
-  .pr-attach-frame { width: 100%; height: 760px; border: 1px solid #ccc; }
-  .pr-attach-fallback { font-size: 10.5px; color: #777; margin-top: 8px; }
+  table.pr-table a { color: #4b2e8f; }
   @media print {
     body > *:not(#printReport) { display: none !important; }
     #printReport { display: block !important; color: #000; background: #fff; padding: 0; }
@@ -2307,25 +2303,6 @@
     return { rowKeys: rowKeys, data: data, entries: entries };
   }
 
-  function attachmentPagesHtml(entries) {
-    var withAttach = entries.filter(function (e) { return e.attachment && e.attachment.dataUrl; });
-    if (!withAttach.length) return "";
-    return withAttach.map(function (e) {
-      var isImage = (e.attachment.type || "").indexOf("image/") === 0;
-      var titleBits = [fmtDate(e.date), entryLabel(e), fmtMoney(e.amount)].join(" — ");
-      var body = isImage
-        ? '<img class="pr-attach-img" src="' + e.attachment.dataUrl + '" alt="' + escapeHtml(e.attachment.name) + '" />'
-        : ('<iframe class="pr-attach-frame" src="' + e.attachment.dataUrl + '" title="' + escapeHtml(e.attachment.name) + '"></iframe>' +
-           '<p class="pr-attach-fallback">Se o comprovante em PDF não aparecer acima na impressão, abra-o pelo painel em Lançamentos → “Ver” no anexo.</p>');
-      return (
-        '<div class="pr-attach-page">' +
-        '<div class="pr-attach-head">Comprovante — ' + escapeHtml(titleBits) + " — " + escapeHtml(e.attachment.name) + "</div>" +
-        body +
-        "</div>"
-      );
-    }).join("");
-  }
-
   function buildPrestacaoContasReport(p, opts) {
     opts = opts || {};
     var from = opts.from || "", to = opts.to || "";
@@ -2356,7 +2333,9 @@
       var entryRows = row.entries.slice().sort(function (a, b) { return (a.date || "").localeCompare(b.date || ""); }).map(function (e) {
         var quem = e.person ? (e.person + (e.role ? " — " + e.role : "")) : (e.supplier || "—");
         var cnpj = e.cnpjNA ? "Não se aplica" : (e.cnpj || "—");
-        var comprovante = (e.attachment && e.attachment.dataUrl) ? "Sim" : "—";
+        var comprovante = e.link
+          ? '<a href="' + escapeHtml(e.link) + '" target="_blank" rel="noopener noreferrer">🔗 Ver comprovante</a>'
+          : ((e.attachment && e.attachment.dataUrl) ? "Anexado no sistema" : "—");
         return "<tr>" +
           "<td>" + fmtDate(e.date) + "</td>" +
           "<td>" + escapeHtml(entryLabel(e)) + "</td>" +
@@ -2388,8 +2367,6 @@
         '<table class="pr-table"><thead><tr><th>Contrapartida</th><th>Prazo</th><th>Status</th></tr></thead><tbody>' + cpRows + "</tbody></table>";
     }
 
-    var attachPages = attachmentPagesHtml(breakdown.entries);
-
     var generatedAt = fmtDateTime(new Date().toISOString());
     var who = CURRENT_USER && CURRENT_USER.name ? escapeHtml(CURRENT_USER.name) : "";
 
@@ -2413,7 +2390,6 @@
       counterpartsHtml +
       signatureHtml +
       '<div class="pr-footer">Gerado em ' + generatedAt + (who ? " por " + who : "") + "</div>" +
-      attachPages +
       "</div>"
     );
   }
