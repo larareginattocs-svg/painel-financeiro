@@ -1198,6 +1198,22 @@
     n = Number(n) || 0;
     return "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  function fmtMoneyPlain(n) {
+    n = Number(n) || 0;
+    return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function parseMoneyInput(str) {
+    if (str == null) return 0;
+    str = String(str).trim();
+    if (!str) return 0;
+    // Accepts "494829", "494829.00", "494.829,00" and "494829,00"
+    str = str.replace(/\s/g, "");
+    if (str.indexOf(",") !== -1) {
+      str = str.replace(/\./g, "").replace(",", ".");
+    }
+    var n = parseFloat(str);
+    return isNaN(n) ? 0 : n;
+  }
   function fmtPct(n) {
     if (!isFinite(n)) return "—";
     return (n * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
@@ -1935,7 +1951,7 @@
       statusBannerHtml(t, null) +
       '<div class="proj-head">' +
       '<div class="proj-stats">' +
-      '<div class="stat budget"><div class="label">Orçamento total</div><div class="value num">R$ <input type="number" step="0.01" min="0" data-budget-input="' + p.id + '" value="' + (Number(p.budget) || 0) + '" /></div></div>' +
+      '<div class="stat budget"><div class="label">Orçamento total</div><div class="value num">R$ <input type="text" inputmode="decimal" data-budget-input="' + p.id + '" value="' + fmtMoneyPlain(p.budget) + '" /></div></div>' +
       '<div class="stat"><div class="label">Gasto até agora</div><div class="value num">' + fmtMoney(t.spent) + "</div></div>" +
       '<div class="stat"><div class="label">Saldo do orçamento</div><div class="value num">' + fmtMoney(t.balance) + "</div></div>" +
       '<div class="stat"><div class="label">Status</div><div class="value"><span class="pill ' + t.status + '">' + statusLabel(t.status) + " · " + fmtPct(t.pct) + "</span></div></div>" +
@@ -2335,18 +2351,30 @@
     });
 
     panels.querySelectorAll("[data-budget-input]").forEach(function (input) {
-      input.addEventListener("change", function () {
+      input.addEventListener("focus", function () {
+        var pid = input.getAttribute("data-budget-input");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        if (!p) return;
+        var raw = Number(p.budget) || 0;
+        input.value = raw === 0 ? "" : String(raw);
+        setTimeout(function () { input.select(); }, 0);
+      });
+      input.addEventListener("blur", function () {
         var pid = input.getAttribute("data-budget-input");
         var p = state.projects.find(function (x) { return x.id === pid; });
         if (!p) return;
         var oldBudget = Number(p.budget) || 0;
-        var newBudget = Number(input.value) || 0;
+        var newBudget = parseMoneyInput(input.value);
         p.budget = newBudget;
+        input.value = fmtMoneyPlain(newBudget);
         if (oldBudget !== newBudget) {
           logHistory(p, "budget", "Orçamento alterado de " + fmtMoney(oldBudget) + " para " + fmtMoney(newBudget));
+          renderAll();
+          persist();
         }
-        renderAll();
-        persist();
+      });
+      input.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); input.blur(); }
       });
     });
 
