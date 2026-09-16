@@ -1006,31 +1006,68 @@
 
   /* ---------- Relatório de prestação de contas (impressão/PDF) ---------- */
   #printReport { display: none; }
-  .pr-header { margin-bottom: 16px; }
-  .pr-header h1 { font-size: 20px; margin: 0 0 4px; color: #1a1a2e; }
-  .pr-header h2 { font-size: 16px; margin: 0; color: #555; font-weight: 600; }
-  table.pr-meta, table.pr-summary { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12.5px; }
-  table.pr-meta th, table.pr-meta td, table.pr-summary th, table.pr-summary td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
-  table.pr-meta th, table.pr-summary th { background: #f2f2f2; width: 170px; font-weight: 600; }
-  .pr-rubrica-title { font-size: 14px; margin: 18px 0 6px; padding-bottom: 4px; border-bottom: 2px solid #333; display: flex; justify-content: space-between; }
-  .pr-rubrica-total { font-weight: 700; }
-  table.pr-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 8px; }
-  table.pr-table th, table.pr-table td { border: 1px solid #ccc; padding: 5px 6px; text-align: left; }
-  table.pr-table th { background: #f2f2f2; }
-  .pr-footer { margin-top: 24px; font-size: 10.5px; color: #777; border-top: 1px solid #ccc; padding-top: 8px; }
-  table.pr-total-geral { width: 100%; border-collapse: collapse; margin: 4px 0 16px; font-size: 12.5px; }
-  table.pr-total-geral th, table.pr-total-geral td { border: 2px solid #333; padding: 7px 8px; text-align: left; font-weight: 700; }
-  .pr-section-title { font-size: 14px; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #333; }
-  .pr-signature { margin-top: 48px; display: flex; gap: 40px; flex-wrap: wrap; }
-  .pr-signature-line { flex: 1 1 260px; border-top: 1px solid #333; padding-top: 6px; font-size: 11.5px; color: #555; text-align: center; }
-  .pr-signature-date { flex: 0 1 180px; }
-  table.pr-table a { color: #4b2e8f; }
+  @page { size: A4; margin: 16mm 15mm; }
+
+  .pr-report { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; color: #1f1f2e; font-size: 12px; line-height: 1.45; }
+
+  .pr-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 3px solid #7c2fb0; }
+  .pr-header-logo { height: 40px; width: auto; display: block; flex: 0 0 auto; }
+  .pr-header-text { flex: 1 1 auto; }
+  .pr-header .pr-eyebrow { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #a6791f; font-weight: 700; margin-bottom: 4px; }
+  .pr-header h1 { font-size: 21px; margin: 0 0 4px; color: #1a1a2e; }
+  .pr-header h2 { font-size: 14px; margin: 0; color: #555; font-weight: 600; }
+
+  .pr-info-card {
+    background: #f7f4fb; border: 1px solid #e4defa; border-radius: 8px;
+    padding: 10px 16px; margin-bottom: 16px;
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px 28px; font-size: 11.5px;
+  }
+  .pr-info-card .pr-info-item { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dashed #ddd; padding-bottom: 3px; }
+  .pr-info-card .pr-info-label { color: #777; }
+  .pr-info-card .pr-info-value { font-weight: 600; color: #1a1a2e; text-align: right; }
+
+  .pr-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+  .pr-stat-box { border: 1px solid #e2e2e2; border-radius: 8px; padding: 8px 10px; }
+  .pr-stat-box .pr-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; font-weight: 700; margin-bottom: 3px; }
+  .pr-stat-box .pr-stat-value { font-size: 13.5px; font-weight: 700; color: #1a1a2e; }
+  .pr-stat-box.accent { background: #7c2fb0; border-color: #7c2fb0; }
+  .pr-stat-box.accent .pr-stat-label, .pr-stat-box.accent .pr-stat-value { color: #fff; }
+
+  .pr-rubrica-band {
+    display: flex; justify-content: space-between; align-items: baseline;
+    background: #f1ebfa; border-left: 4px solid #7c2fb0; border-radius: 0 5px 5px 0;
+    padding: 6px 10px; margin: 18px 0 6px;
+  }
+  .pr-rubrica-band .pr-rubrica-name { font-size: 12px; font-weight: 700; color: #4b2e8f; }
+  .pr-rubrica-band .pr-rubrica-total { font-size: 12px; font-weight: 700; color: #1a1a2e; }
+
+  table.pr-table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 8px; }
+  table.pr-table th { background: #faf9fc; color: #777; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1.5px solid #ddd; padding: 6px; text-align: left; }
+  table.pr-table td { border-bottom: 1px solid #eee; padding: 6px; }
+  table.pr-table tbody tr:nth-child(even) { background: #fafafa; }
+  table.pr-table a { color: #7c2fb0; font-weight: 600; text-decoration: none; }
+  .pr-comprovante-muted { color: #999; }
+
+  .pr-total-geral-row {
+    display: flex; justify-content: flex-end; align-items: baseline; gap: 14px;
+    border-top: 2px solid #1a1a2e; padding-top: 8px; margin: 2px 0 18px;
+  }
+  .pr-total-geral-row .pr-tg-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: #666; }
+  .pr-total-geral-row .pr-tg-value { font-size: 16px; font-weight: 800; color: #1a1a2e; }
+
+  .pr-section-title { font-size: 12.5px; font-weight: 700; color: #4b2e8f; margin: 22px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e4defa; }
+
+  .pr-signature { margin-top: 50px; display: flex; gap: 40px; flex-wrap: wrap; }
+  .pr-signature-line { flex: 1 1 260px; border-top: 1px solid #999; padding-top: 6px; font-size: 11px; color: #555; text-align: center; }
+  .pr-signature-date { flex: 0 1 190px; }
+  .pr-footer { margin-top: 24px; font-size: 9.5px; color: #999; border-top: 1px solid #eee; padding-top: 8px; }
+
   @media print {
     body > *:not(#printReport) { display: none !important; }
     #printReport { display: block !important; color: #000; background: #fff; padding: 0; }
-    .pr-rubrica-title { break-after: avoid; }
+    .pr-rubrica-band { break-after: avoid; }
     table.pr-table tr { break-inside: avoid; }
-    .pr-signature { break-inside: avoid; }
+    .pr-info-card, .pr-stats-grid, .pr-signature { break-inside: avoid; }
   }
 </style>
 </head>
@@ -2316,14 +2353,15 @@
       { key: "sponsor", label: "Patrocinador" },
       { key: "responsibleCompany", label: "Empresa responsável" }
     ];
-    var metaRows = metaFields.filter(function (mf) { return p[mf.key]; }).map(function (mf) {
+    var metaItems = metaFields.filter(function (mf) { return p[mf.key]; }).map(function (mf) {
       var val = mf.isDate ? fmtDate(p[mf.key]) : p[mf.key];
-      return "<tr><th>" + escapeHtml(mf.label) + "</th><td>" + escapeHtml(val) + "</td></tr>";
-    }).join("");
+      return '<div class="pr-info-item"><span class="pr-info-label">' + escapeHtml(mf.label) + '</span><span class="pr-info-value">' + escapeHtml(val) + "</span></div>";
+    });
     if (from || to) {
       var periodoVal = (from ? fmtDate(from) : "início") + " a " + (to ? fmtDate(to) : "hoje");
-      metaRows += "<tr><th>Período do relatório</th><td>" + escapeHtml(periodoVal) + "</td></tr>";
+      metaItems.push('<div class="pr-info-item"><span class="pr-info-label">Período do relatório</span><span class="pr-info-value">' + escapeHtml(periodoVal) + "</span></div>");
     }
+    var metaHtml = metaItems.length ? '<div class="pr-info-card">' + metaItems.join("") + "</div>" : "";
 
     var breakdown = projectRubricaBreakdown(p, from, to);
     var periodTotal = breakdown.entries.reduce(function (sum, e) { return sum + (Number(e.amount) || 0); }, 0);
@@ -2335,7 +2373,7 @@
         var cnpj = e.cnpjNA ? "Não se aplica" : (e.cnpj || "—");
         var comprovante = e.link
           ? '<a href="' + escapeHtml(e.link) + '" target="_blank" rel="noopener noreferrer">🔗 Ver comprovante</a>'
-          : ((e.attachment && e.attachment.dataUrl) ? "Anexado no sistema" : "—");
+          : ((e.attachment && e.attachment.dataUrl) ? '<span class="pr-comprovante-muted">📎 Anexado no sistema</span>' : '<span class="pr-comprovante-muted">—</span>');
         return "<tr>" +
           "<td>" + fmtDate(e.date) + "</td>" +
           "<td>" + escapeHtml(entryLabel(e)) + "</td>" +
@@ -2347,13 +2385,13 @@
           "</tr>";
       }).join("");
       return (
-        '<h3 class="pr-rubrica-title"><span>' + escapeHtml(label) + '</span><span class="pr-rubrica-total">' + fmtMoney(row.total) + "</span></h3>" +
+        '<div class="pr-rubrica-band"><span class="pr-rubrica-name">' + escapeHtml(label) + '</span><span class="pr-rubrica-total">' + fmtMoney(row.total) + "</span></div>" +
         '<table class="pr-table"><thead><tr><th>Data</th><th>Descrição</th><th>Descrição do serviço</th><th>Fornecedor/Pessoa</th><th>CNPJ</th><th class="val">Valor</th><th>Comprovante</th></tr></thead><tbody>' + entryRows + "</tbody></table>"
       );
     }).join("");
 
     var totalGeralHtml = breakdown.entries.length
-      ? '<table class="pr-total-geral"><tbody><tr><th>' + (from || to ? "Total do período" : "Total geral") + '</th><td class="val num">' + fmtMoney(periodTotal) + "</td></tr></tbody></table>"
+      ? '<div class="pr-total-geral-row"><span class="pr-tg-label">' + (from || to ? "Total do período" : "Total geral") + '</span><span class="pr-tg-value">' + fmtMoney(periodTotal) + "</span></div>"
       : "";
 
     var counterparts = (p.counterparts || []).slice().sort(function (a, b) { return (a.dueDate || "9999").localeCompare(b.dueDate || "9999"); });
@@ -2376,15 +2414,28 @@
       '<div class="pr-signature-line pr-signature-date"><span>Data: ____ / ____ / ______</span></div>' +
       "</div>";
 
+    var logoEl = document.querySelector(".brand-logo");
+    var logoSrc = logoEl ? logoEl.getAttribute("src") : "";
+    var orgName = "Associação Encaminhando";
+
+    var statsGridHtml =
+      '<div class="pr-stats-grid">' +
+      '<div class="pr-stat-box accent"><div class="pr-stat-label">Orçamento total</div><div class="pr-stat-value">' + fmtMoney(t.budget) + "</div></div>" +
+      '<div class="pr-stat-box"><div class="pr-stat-label">Gasto até agora</div><div class="pr-stat-value">' + fmtMoney(t.spent) + "</div></div>" +
+      '<div class="pr-stat-box"><div class="pr-stat-label">Saldo do orçamento</div><div class="pr-stat-value">' + fmtMoney(t.balance) + "</div></div>" +
+      '<div class="pr-stat-box"><div class="pr-stat-label">Recebido (parcelas)</div><div class="pr-stat-value">' + fmtMoney(received) + "</div></div>" +
+      '<div class="pr-stat-box"><div class="pr-stat-label">Saldo em caixa</div><div class="pr-stat-value">' + fmtMoney(cashBalance) + "</div></div>" +
+      '<div class="pr-stat-box"><div class="pr-stat-label">% executado</div><div class="pr-stat-value">' + fmtPct(t.pct) + "</div></div>" +
+      "</div>";
+
     return (
       '<div class="pr-report">' +
-      '<div class="pr-header"><h1>Relatório de Prestação de Contas</h1><h2>' + escapeHtml(p.name) + "</h2></div>" +
-      (metaRows ? '<table class="pr-meta"><tbody>' + metaRows + "</tbody></table>" : "") +
-      '<table class="pr-summary"><tbody>' +
-      "<tr><th>Orçamento total</th><td>" + fmtMoney(t.budget) + "</td><th>Recebido (parcelas)</th><td>" + fmtMoney(received) + "</td></tr>" +
-      "<tr><th>Gasto até agora</th><td>" + fmtMoney(t.spent) + "</td><th>Saldo em caixa</th><td>" + fmtMoney(cashBalance) + "</td></tr>" +
-      "<tr><th>Saldo do orçamento</th><td>" + fmtMoney(t.balance) + "</td><th>% executado</th><td>" + fmtPct(t.pct) + "</td></tr>" +
-      "</tbody></table>" +
+      '<div class="pr-header">' +
+      (logoSrc ? '<img class="pr-header-logo" src="' + logoSrc + '" alt="" />' : "") +
+      '<div class="pr-header-text"><div class="pr-eyebrow">' + escapeHtml(orgName) + '</div><h1>Relatório de Prestação de Contas</h1><h2>' + escapeHtml(p.name) + "</h2></div>" +
+      "</div>" +
+      metaHtml +
+      statsGridHtml +
       (rubricaSections || "<p>Nenhum lançamento no período selecionado.</p>") +
       totalGeralHtml +
       counterpartsHtml +
