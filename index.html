@@ -1038,7 +1038,7 @@
   .pr-info-card .pr-info-label { color: #777; }
   .pr-info-card .pr-info-value { font-weight: 600; color: #1a1a2e; text-align: right; }
 
-  .pr-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+  .pr-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
   .pr-stat-box { border: 1px solid #e2e2e2; border-radius: 8px; padding: 8px 10px; }
   .pr-stat-box .pr-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: #888; font-weight: 700; margin-bottom: 3px; }
   .pr-stat-box .pr-stat-value { font-size: 13.5px; font-weight: 700; color: #1a1a2e; }
@@ -1312,13 +1312,12 @@
 
   var activeTab = sessionStorage.getItem("painel-active-tab") || "resumo";
   var editing = null; // { pid, eid } — entry currently open in the form for editing
-  var editingInstallment = null; // { pid, iid } — installment currently open in its mini-form
   var editingCounterpart = null; // { pid, cid } — contrapartida currently open in its mini-form
   var editingSupplier = null; // id of supplier currently open in the fornecedores form
   var editingPerson = null; // id of person currently open in the recursos-humanos form
   var editingProjectName = null; // id of project whose name field is currently open for editing
   var editingRubricaBudget = null; // rubrica key whose "orçamento previsto" field is currently open for editing
-  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "installment" | "supplier" | "person" — awaiting confirm in the delete modal
+  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "counterpart" | "supplier" | "person" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,dataUrl} (new file staged), null (explicit removal), or undefined (no change)
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
   var filterState = {}; // pid -> { text, category, payment, from, to } — view-local, not persisted
@@ -1458,11 +1457,6 @@
     return entry.category || "lançamento";
   }
 
-  function installmentsTotal(p) {
-    var total = 0;
-    (p.installments || []).forEach(function (i) { total += Number(i.amount) || 0; });
-    return total;
-  }
 
   function supplierTotals() {
     var map = {};
@@ -1593,15 +1587,6 @@
       " (" + fmtDate(di.date) + ")</span></div>";
   }
 
-  function cashBannerHtml(p, name) {
-    var t = projectTotals(p);
-    var cash = installmentsTotal(p) - t.spent;
-    if (cash >= 0) return "";
-    var label = name ? "<strong>" + escapeHtml(name) + "</strong> — " : "";
-    return '<div class="status-banner danger"><span class="ico">💸</span><span>' + label +
-      "Saldo em caixa negativo: " + fmtMoney(cash) + " (gastou mais do que recebeu em parcelas)</span></div>";
-  }
-
   function collectResumoAlerts() {
     var order = { danger: 0, warn: 1 };
     var items = [];
@@ -1609,10 +1594,6 @@
       var t = projectTotals(p);
       if (t.status === "warn" || t.status === "danger") {
         items.push({ rank: order[t.status], html: statusBannerHtml(t, p.name) });
-      }
-      var cash = installmentsTotal(p) - t.spent;
-      if (cash < 0) {
-        items.push({ rank: order.danger, html: cashBannerHtml(p, p.name) });
       }
       var di = deadlineInfo(p);
       if (di && di.status !== "ok") {
@@ -1712,21 +1693,17 @@
 
     var rows = "";
     if (state.projects.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="8"><div class="empty-state"><span class="empty-ico">📁</span><span>Nenhum projeto cadastrado ainda. Clique em “+” no menu ao lado para adicionar.</span></div></td></tr>';
+      rows = '<tr class="empty-row"><td colspan="6"><div class="empty-state"><span class="empty-ico">📁</span><span>Nenhum projeto cadastrado ainda. Clique em “+” no menu ao lado para adicionar.</span></div></td></tr>';
     } else if (visibleProjects.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="8"><div class="empty-state"><span class="empty-ico">🔍</span><span>Nenhum projeto corresponde aos filtros selecionados.</span></div></td></tr>';
+      rows = '<tr class="empty-row"><td colspan="6"><div class="empty-state"><span class="empty-ico">🔍</span><span>Nenhum projeto corresponde aos filtros selecionados.</span></div></td></tr>';
     } else {
       visibleProjects.forEach(function (p) {
         var t = projectTotals(p);
-        var received = installmentsTotal(p);
-        var cashBalance = received - t.spent;
         rows += '<tr class="project-row">';
         rows += '<td data-label="Projeto"><span class="cell-label">Projeto</span>' + escapeHtml(p.name) + "</td>";
         rows += '<td class="val num" data-label="Orçamento"><span class="cell-label">Orçamento</span>' + fmtMoney(t.budget) + "</td>";
         rows += '<td class="val num" data-label="Gasto"><span class="cell-label">Gasto</span>' + fmtMoney(t.spent) + "</td>";
-        rows += '<td class="val num" data-label="Saldo orç."><span class="cell-label">Saldo orç.</span>' + fmtMoney(t.balance) + "</td>";
-        rows += '<td class="val num" data-label="Recebido"><span class="cell-label">Recebido</span>' + fmtMoney(received) + "</td>";
-        rows += '<td class="val num strong" data-label="Saldo em caixa"><span class="cell-label">Saldo em caixa</span>' + fmtMoney(cashBalance) + "</td>";
+        rows += '<td class="val num strong" data-label="Saldo orç."><span class="cell-label">Saldo orç.</span>' + fmtMoney(t.balance) + "</td>";
         rows += '<td class="val" data-label="Execução"><span class="cell-label">Execução</span><div class="bar-track" style="max-width:90px;margin-left:auto"><div class="bar-fill ' + t.status + '" style="width:' + Math.min(100, t.pct * 100).toFixed(0) + '%"></div></div></td>';
         rows += '<td data-label="Status"><span class="cell-label">Status</span><span class="pill ' + t.status + '">' + statusLabel(t.status) + "</span></td>";
         rows += "</tr>";
@@ -1759,7 +1736,7 @@
       '<button class="btn export-btn" type="button" data-export-all>⬇ Exportar tudo (.csv)</button></div>' +
       filtersHtml +
       '<div class="table-wrap projects-table-wrap"><table class="projects-table"><thead><tr>' +
-      "<th>Projeto</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Saldo orç.</th><th class=\"val\">Recebido</th><th class=\"val\">Saldo em caixa</th><th class=\"val\">Execução</th><th>Status</th>" +
+      "<th>Projeto</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Saldo orç.</th><th class=\"val\">Execução</th><th>Status</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
       renderSupplierSummary() +
       renderRubricaSummary() +
@@ -2160,8 +2137,6 @@
   function renderProjectPanel(p) {
     var cls = "panel" + (activeTab === p.id ? " active" : "");
     var t = projectTotals(p);
-    var received = installmentsTotal(p);
-    var cashBalance = received - t.spent;
     var editEntry = (editing && editing.pid === p.id) ? p.entries.find(function (e) { return e.id === editing.eid; }) : null;
     var isRH = !!(editEntry && editEntry.category === RH_CATEGORY);
     var hasExtraDetails = !!(editEntry && (editEntry.refMonth || editEntry.supplier || editEntry.cnpj || editEntry.cnpjNA || editEntry.notes || editEntry.link || (editEntry.attachment && editEntry.attachment.dataUrl)));
@@ -2247,7 +2222,6 @@
       '<div class="' + cls + '" data-panel="' + p.id + '">' +
       titleBlockHtml +
       statusBannerHtml(t, null) +
-      cashBannerHtml(p, null) +
       deadlineBannerHtml(p, null) +
       '<div class="proj-head">' +
       '<div class="proj-stats">' +
@@ -2255,12 +2229,8 @@
       '<div class="stat"><div class="label">Gasto até agora</div><div class="value num">' + fmtMoney(t.spent) + "</div></div>" +
       '<div class="stat"><div class="label">Saldo do orçamento</div><div class="value num">' + fmtMoney(t.balance) + "</div></div>" +
       '<div class="stat"><div class="label">Status</div><div class="value"><span class="pill ' + t.status + '">' + statusLabel(t.status) + " · " + fmtPct(t.pct) + "</span></div></div>" +
-      '<div class="stat"><div class="label">Recebido (parcelas)</div><div class="value num">' + fmtMoney(received) + "</div></div>" +
-      '<div class="stat"><div class="label">Saldo em caixa</div><div class="value num">' + fmtMoney(cashBalance) + "</div></div>" +
       "</div>" +
       "</div>" +
-
-      renderInstallmentsSection(p, received) +
 
       '<div class="form-card' + (editEntry ? " editing" : "") + '">' +
       "<h3>Lançar gasto" + (editEntry ? '<span class="edit-flag">Editando lançamento</span>' : "") + "</h3>" +
@@ -2354,46 +2324,6 @@
     );
   }
 
-  function renderInstallmentsSection(p, received) {
-    var editIns = (editingInstallment && editingInstallment.pid === p.id)
-      ? p.installments.find(function (i) { return i.id === editingInstallment.iid; })
-      : null;
-    var rows = "";
-    var sorted = p.installments.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });
-    if (sorted.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">💰</span><span>Nenhuma parcela registrada ainda.</span></div></td></tr>';
-    } else {
-      sorted.forEach(function (i) {
-        rows += '<tr>';
-        rows += "<td>" + fmtDate(i.date) + "</td>";
-        rows += '<td class="val num">' + fmtMoney(i.amount) + "</td>";
-        rows += '<td class="wrap">' + escapeHtml(i.notes || "") + "</td>";
-        rows += '<td><div class="row-actions">' +
-          '<button class="row-edit" data-edit-installment="' + i.id + '" data-proj="' + p.id + '" title="Editar parcela">✎</button>' +
-          '<button class="row-del" data-del-installment="' + i.id + '" data-proj="' + p.id + '" title="Excluir parcela">✕</button>' +
-          "</div></td>";
-        rows += "</tr>";
-      });
-    }
-    return (
-      '<details class="section-card"' + (editIns ? " open" : "") + ' data-installments="' + p.id + '">' +
-      '<summary>Parcelas de repasse recebidas <span class="summary-total">' + fmtMoney(received) + ' recebido</span><span class="chev">▶</span></summary>' +
-      '<div class="installment-form" data-installment-form="' + p.id + '">' +
-      '<div class="field"><label>Data</label><input type="date" data-if="date" value="' + escapeHtml(editIns ? editIns.date : "") + '" /></div>' +
-      '<div class="field"><label>Valor (R$)</label><input type="number" step="0.01" min="0" data-if="amount" placeholder="0,00" value="' + escapeHtml(editIns ? editIns.amount : "") + '" /></div>' +
-      '<div class="field"><label>Observações</label><input type="text" data-if="notes" placeholder="Opcional — nº da parcela, referência, etc." value="' + escapeHtml(editIns ? editIns.notes : "") + '" /></div>' +
-      '<div style="display:flex;gap:8px">' +
-      (editIns ? '<button class="btn subtle" type="button" data-cancel-installment="' + p.id + '">Cancelar</button>' : "") +
-      '<button class="btn" type="button" data-submit-installment="' + p.id + '">' + (editIns ? "Salvar" : "Adicionar") + '</button>' +
-      "</div>" +
-      "</div>" +
-      '<div class="table-wrap"><table><thead><tr>' +
-      "<th>Data</th><th class=\"val\">Valor</th><th class=\"wrap\">Observações</th><th>Ações</th>" +
-      "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
-      "</details>"
-    );
-  }
-
   function renderCounterpartsSection(p) {
     var editCp = (editingCounterpart && editingCounterpart.pid === p.id)
       ? p.counterparts.find(function (c) { return c.id === editingCounterpart.cid; })
@@ -2483,8 +2413,6 @@
     opts = opts || {};
     var from = opts.from || "", to = opts.to || "";
     var t = projectTotals(p);
-    var received = installmentsTotal(p);
-    var cashBalance = received - t.spent;
     var metaFields = [
       { key: "incentiveLaw", label: "Lei de incentivo" },
       { key: "projectNumber", label: "Número do projeto" },
@@ -2562,8 +2490,6 @@
       '<div class="pr-stat-box accent"><div class="pr-stat-label">Orçamento total</div><div class="pr-stat-value">' + fmtMoney(t.budget) + "</div></div>" +
       '<div class="pr-stat-box"><div class="pr-stat-label">Gasto até agora</div><div class="pr-stat-value">' + fmtMoney(t.spent) + "</div></div>" +
       '<div class="pr-stat-box"><div class="pr-stat-label">Saldo do orçamento</div><div class="pr-stat-value">' + fmtMoney(t.balance) + "</div></div>" +
-      '<div class="pr-stat-box"><div class="pr-stat-label">Recebido (parcelas)</div><div class="pr-stat-value">' + fmtMoney(received) + "</div></div>" +
-      '<div class="pr-stat-box"><div class="pr-stat-label">Saldo em caixa</div><div class="pr-stat-value">' + fmtMoney(cashBalance) + "</div></div>" +
       '<div class="pr-stat-box"><div class="pr-stat-label">% executado</div><div class="pr-stat-value">' + fmtPct(t.pct) + "</div></div>" +
       "</div>";
 
@@ -3247,46 +3173,6 @@
       });
     });
 
-    panels.querySelectorAll("[data-submit-installment]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var pid = btn.getAttribute("data-submit-installment");
-        var p = state.projects.find(function (x) { return x.id === pid; });
-        if (!p) return;
-        var form = panels.querySelector('[data-installment-form="' + pid + '"]');
-        var get = function (f) { return form.querySelector('[data-if="' + f + '"]').value; };
-        var date = get("date"), amount = Number(get("amount")), notes = get("notes").trim();
-        if (!date || !amount || amount <= 0) {
-          form.style.outline = "1px solid var(--danger)";
-          setTimeout(function () { form.style.outline = ""; }, 900);
-          return;
-        }
-        if (editingInstallment && editingInstallment.pid === pid) {
-          var existing = p.installments.find(function (x) { return x.id === editingInstallment.iid; });
-          if (existing) {
-            existing.date = date; existing.amount = amount; existing.notes = notes;
-            logHistory(p, "edit", "Parcela editada: " + fmtMoney(amount) + " (" + fmtDate(date) + ")");
-          }
-          editingInstallment = null;
-        } else {
-          p.installments.push({ id: "i" + Date.now() + Math.floor(Math.random() * 1000), date: date, amount: amount, notes: notes });
-          logHistory(p, "add", "Parcela recebida: " + fmtMoney(amount) + " (" + fmtDate(date) + ")");
-        }
-        renderAll();
-        var details = panels.querySelector('[data-installments="' + pid + '"]');
-        if (details) details.open = true;
-        persist();
-      });
-    });
-
-    panels.querySelectorAll("[data-cancel-installment]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        editingInstallment = null;
-        renderAll();
-        var details = panels.querySelector('[data-installments="' + btn.getAttribute("data-cancel-installment") + '"]');
-        if (details) details.open = true;
-      });
-    });
-
     panels.querySelectorAll("[data-submit-counterpart]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var pid = btn.getAttribute("data-submit-counterpart");
@@ -3599,33 +3485,6 @@
       });
     });
 
-    container.querySelectorAll("[data-edit-installment]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var pid = btn.getAttribute("data-proj");
-        var iid = btn.getAttribute("data-edit-installment");
-        editingInstallment = { pid: pid, iid: iid };
-        renderAll();
-        var details = document.querySelector('[data-installments="' + pid + '"]');
-        if (details) { details.open = true; details.scrollIntoView({ behavior: "smooth", block: "center" }); }
-      });
-    });
-
-    container.querySelectorAll("[data-del-installment]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var pid = btn.getAttribute("data-proj");
-        var iid = btn.getAttribute("data-del-installment");
-        var p = state.projects.find(function (x) { return x.id === pid; });
-        if (!p) return;
-        var inst = p.installments.find(function (x) { return x.id === iid; });
-        if (!inst) return;
-        pendingDelete = { pid: pid, id: iid, kind: "installment" };
-        document.getElementById("confirmTitle").textContent = "Excluir parcela";
-        var msg = document.getElementById("confirmMessage");
-        msg.textContent = "Excluir a parcela de " + fmtMoney(inst.amount) + " (" + fmtDate(inst.date) + ")? Essa ação não pode ser desfeita.";
-        document.getElementById("confirmOverlay").classList.add("open");
-      });
-    });
-
     container.querySelectorAll("[data-edit-counterpart]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var pid = btn.getAttribute("data-proj");
@@ -3776,12 +3635,7 @@
     var p = state.projects.find(function (x) { return x.id === pid; });
     pendingDelete = null;
     if (!p) return;
-    if (kind === "installment") {
-      var inst = p.installments.find(function (x) { return x.id === id; });
-      p.installments = p.installments.filter(function (x) { return x.id !== id; });
-      if (inst) logHistory(p, "delete", "Parcela excluída: " + fmtMoney(inst.amount) + " (" + fmtDate(inst.date) + ")");
-      if (editingInstallment && editingInstallment.pid === pid && editingInstallment.iid === id) editingInstallment = null;
-    } else if (kind === "counterpart") {
+    if (kind === "counterpart") {
       var cp = p.counterparts.find(function (x) { return x.id === id; });
       p.counterparts = p.counterparts.filter(function (x) { return x.id !== id; });
       if (cp) logHistory(p, "delete", "Contrapartida excluída: " + cp.description);
