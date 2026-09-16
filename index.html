@@ -433,6 +433,9 @@
   .compare-card-name { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .compare-card-figures { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--ink-soft); }
   .compare-card-pct { font-weight: 700; color: var(--ink); }
+  .compare-card-deadline { margin-top: 8px; font-size: 11.5px; padding-top: 6px; border-top: 1px dashed var(--border); color: var(--ink-soft); }
+  .compare-card-deadline.warn { color: var(--warn); }
+  .compare-card-deadline.danger { color: var(--danger); font-weight: 600; }
 
   .empty-row td { color: var(--ink-faint); text-align: center; padding: 26px 16px; }
   .empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; font-style: normal; }
@@ -949,6 +952,15 @@
   .rubrica-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 14px; }
   .rubrica-detail-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); margin-bottom: 6px; }
   .rubrica-detail .table-wrap { background: var(--surface); box-shadow: none; }
+  .rubrica-previsto { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); font-size: 12.5px; }
+  .rubrica-previsto-row { display: flex; align-items: center; justify-content: space-between; color: var(--ink-soft); margin-bottom: 6px; }
+  .rubrica-previsto-figures { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; color: var(--ink-soft); }
+  .rubrica-previsto-figures .pill { font-size: 11px; padding: 1px 8px; }
+  .rubrica-previsto.editing label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 6px; }
+  .rubrica-previsto-edit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rubrica-previsto-edit-row .rubrica-budget-input { max-width: 160px; }
+  .link-btn { background: none; border: none; padding: 0; color: var(--brand); font-weight: 600; font-size: 12.5px; cursor: pointer; font: inherit; }
+  .link-btn:hover { text-decoration: underline; }
 
   /* ---------- Parcelas (installments) ---------- */
   .installment-form {
@@ -1277,6 +1289,7 @@
     });
     if (!Array.isArray(state.suppliers)) state.suppliers = [];
     if (!Array.isArray(state.people)) state.people = [];
+    if (!state.rubricaBudgets || typeof state.rubricaBudgets !== "object") state.rubricaBudgets = {};
   }
 
   function findSupplierById(id) {
@@ -1304,6 +1317,7 @@
   var editingSupplier = null; // id of supplier currently open in the fornecedores form
   var editingPerson = null; // id of person currently open in the recursos-humanos form
   var editingProjectName = null; // id of project whose name field is currently open for editing
+  var editingRubricaBudget = null; // rubrica key whose "orçamento previsto" field is currently open for editing
   var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "installment" | "supplier" | "person" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,dataUrl} (new file staged), null (explicit removal), or undefined (no change)
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
@@ -1399,11 +1413,7 @@
     return d;
   }
 
-  function projectTotals(p) {
-    var spent = 0;
-    for (var i = 0; i < p.entries.length; i++) spent += Number(p.entries[i].amount) || 0;
-    var budget = Number(p.budget) || 0;
-    var balance = budget - spent;
+  function budgetStatus(spent, budget) {
     var pct = budget > 0 ? spent / budget : (spent > 0 ? Infinity : 0);
     var status = "neutral";
     if (budget > 0) {
@@ -1411,7 +1421,30 @@
       else if (pct > 0.9) status = "warn";
       else status = "ok";
     }
-    return { spent: spent, budget: budget, balance: balance, pct: pct, status: status };
+    return { pct: pct, status: status };
+  }
+
+  function projectTotals(p) {
+    var spent = 0;
+    for (var i = 0; i < p.entries.length; i++) spent += Number(p.entries[i].amount) || 0;
+    var budget = Number(p.budget) || 0;
+    var balance = budget - spent;
+    var bs = budgetStatus(spent, budget);
+    return { spent: spent, budget: budget, balance: balance, pct: bs.pct, status: bs.status };
+  }
+
+  var DEADLINE_WARN_DAYS = 30;
+
+  function deadlineInfo(p) {
+    if (!p.deadline) return null;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var dl = new Date(p.deadline + "T00:00:00");
+    if (isNaN(dl.getTime())) return null;
+    var days = Math.round((dl.getTime() - today.getTime()) / 86400000);
+    var status = "ok";
+    if (days < 0) status = "danger";
+    else if (days <= DEADLINE_WARN_DAYS) status = "warn";
+    return { days: days, status: status, date: p.deadline };
   }
 
   function statusLabel(status) {
@@ -1545,11 +1578,49 @@
     document.getElementById("panels").innerHTML = html;
   }
 
-  function alertingProjects() {
-    return state.projects.filter(function (p) {
-      var s = projectTotals(p).status;
-      return s === "warn" || s === "danger";
+  function deadlineBannerHtml(p, name) {
+    var di = deadlineInfo(p);
+    if (!di || di.status === "ok") return "";
+    var label = name ? "<strong>" + escapeHtml(name) + "</strong> — " : "";
+    if (di.status === "danger") {
+      var overdueDays = Math.abs(di.days);
+      return '<div class="status-banner danger"><span class="ico">⏰</span><span>' + label +
+        "Prazo vencido " + (overdueDays === 0 ? "hoje" : ("há " + overdueDays + (overdueDays === 1 ? " dia" : " dias"))) +
+        " (" + fmtDate(di.date) + ")</span></div>";
+    }
+    return '<div class="status-banner warn"><span class="ico">⏰</span><span>' + label +
+      "Prazo vence " + (di.days === 0 ? "hoje" : ("em " + di.days + (di.days === 1 ? " dia" : " dias"))) +
+      " (" + fmtDate(di.date) + ")</span></div>";
+  }
+
+  function cashBannerHtml(p, name) {
+    var t = projectTotals(p);
+    var cash = installmentsTotal(p) - t.spent;
+    if (cash >= 0) return "";
+    var label = name ? "<strong>" + escapeHtml(name) + "</strong> — " : "";
+    return '<div class="status-banner danger"><span class="ico">💸</span><span>' + label +
+      "Saldo em caixa negativo: " + fmtMoney(cash) + " (gastou mais do que recebeu em parcelas)</span></div>";
+  }
+
+  function collectResumoAlerts() {
+    var order = { danger: 0, warn: 1 };
+    var items = [];
+    state.projects.forEach(function (p) {
+      var t = projectTotals(p);
+      if (t.status === "warn" || t.status === "danger") {
+        items.push({ rank: order[t.status], html: statusBannerHtml(t, p.name) });
+      }
+      var cash = installmentsTotal(p) - t.spent;
+      if (cash < 0) {
+        items.push({ rank: order.danger, html: cashBannerHtml(p, p.name) });
+      }
+      var di = deadlineInfo(p);
+      if (di && di.status !== "ok") {
+        items.push({ rank: order[di.status], html: deadlineBannerHtml(p, p.name) });
+      }
     });
+    items.sort(function (a, b) { return a.rank - b.rank; });
+    return items.map(function (x) { return x.html; });
   }
 
   function statusBannerHtml(t, name) {
@@ -1621,13 +1692,31 @@
     );
   }
 
+  var resumoFilters = { law: "", status: "" };
+  var rubricaSectionOpen = false;
+  var openRubricaCards = {};
+
   function renderResumoPanel() {
     var cls = "panel" + (activeTab === "resumo" ? " active" : "");
+    var lawsInUse = [];
+    state.projects.forEach(function (p) {
+      if (p.incentiveLaw && lawsInUse.indexOf(p.incentiveLaw) === -1) lawsInUse.push(p.incentiveLaw);
+    });
+    lawsInUse.sort(function (a, b) { return a.localeCompare(b, "pt-BR"); });
+
+    var visibleProjects = state.projects.filter(function (p) {
+      if (resumoFilters.law && p.incentiveLaw !== resumoFilters.law) return false;
+      if (resumoFilters.status && projectTotals(p).status !== resumoFilters.status) return false;
+      return true;
+    });
+
     var rows = "";
     if (state.projects.length === 0) {
       rows = '<tr class="empty-row"><td colspan="8"><div class="empty-state"><span class="empty-ico">📁</span><span>Nenhum projeto cadastrado ainda. Clique em “+” no menu ao lado para adicionar.</span></div></td></tr>';
+    } else if (visibleProjects.length === 0) {
+      rows = '<tr class="empty-row"><td colspan="8"><div class="empty-state"><span class="empty-ico">🔍</span><span>Nenhum projeto corresponde aos filtros selecionados.</span></div></td></tr>';
     } else {
-      state.projects.forEach(function (p) {
+      visibleProjects.forEach(function (p) {
         var t = projectTotals(p);
         var received = installmentsTotal(p);
         var cashBalance = received - t.spent;
@@ -1643,13 +1732,24 @@
         rows += "</tr>";
       });
     }
-    var alerts = alertingProjects();
-    var alertsHtml = "";
-    if (alerts.length) {
-      alertsHtml = '<div class="resumo-alerts">' + alerts.map(function (p) {
-        return statusBannerHtml(projectTotals(p), p.name);
-      }).join("") + "</div>";
-    }
+    var alerts = collectResumoAlerts();
+    var alertsHtml = alerts.length ? '<div class="resumo-alerts">' + alerts.join("") + "</div>" : "";
+
+    var lawOptionsHtml = lawsInUse.map(function (l) {
+      return '<option value="' + escapeHtml(l) + '"' + (resumoFilters.law === l ? " selected" : "") + ">" + escapeHtml(l) + "</option>";
+    }).join("");
+    var statusChoices = [["ok", "Em dia"], ["warn", "Atenção"], ["danger", "Estourou"], ["neutral", "Sem orçamento"]];
+    var statusOptionsHtml = statusChoices.map(function (sc) {
+      return '<option value="' + sc[0] + '"' + (resumoFilters.status === sc[0] ? " selected" : "") + ">" + sc[1] + "</option>";
+    }).join("");
+    var filtersHtml = state.projects.length > 0 ? (
+      '<div class="filter-bar">' +
+      '<div class="field"><label>Lei de incentivo</label><select data-resumo-filter="law"><option value="">Todas</option>' + lawOptionsHtml + "</select></div>" +
+      '<div class="field"><label>Status</label><select data-resumo-filter="status"><option value="">Todos</option>' + statusOptionsHtml + "</select></div>" +
+      '<button class="btn subtle filter-clear" type="button" data-clear-resumo-filters' + ((resumoFilters.law || resumoFilters.status) ? "" : " disabled") + ">Limpar filtros</button>" +
+      "</div>"
+    ) : "";
+
     return (
       '<div class="' + cls + '" data-panel="resumo">' +
       alertsHtml +
@@ -1657,6 +1757,7 @@
       renderProjectComparisonCards() +
       '<div class="section-title-row"><div class="section-title">Todos os projetos</div>' +
       '<button class="btn export-btn" type="button" data-export-all>⬇ Exportar tudo (.csv)</button></div>' +
+      filtersHtml +
       '<div class="table-wrap projects-table-wrap"><table class="projects-table"><thead><tr>' +
       "<th>Projeto</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Saldo orç.</th><th class=\"val\">Recebido</th><th class=\"val\">Saldo em caixa</th><th class=\"val\">Execução</th><th>Status</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
@@ -1679,11 +1780,20 @@
     });
     var cards = list.map(function (x) {
       var p = x.p, t = x.t;
+      var di = deadlineInfo(p);
+      var deadlineHtml = "";
+      if (di) {
+        var dtext = di.days < 0
+          ? "Prazo vencido há " + Math.abs(di.days) + (Math.abs(di.days) === 1 ? " dia" : " dias")
+          : (di.days === 0 ? "Prazo vence hoje" : "Faltam " + di.days + (di.days === 1 ? " dia" : " dias") + " para o prazo");
+        deadlineHtml = '<div class="compare-card-deadline ' + di.status + '">⏰ ' + dtext + " (" + fmtDate(di.date) + ")</div>";
+      }
       return (
         '<button class="compare-card" type="button" data-goto-project="' + p.id + '">' +
         '<div class="compare-card-head"><span class="compare-card-name">' + escapeHtml(p.name) + '</span><span class="pill ' + t.status + '">' + statusLabel(t.status) + "</span></div>" +
         '<div class="bar-track"><div class="bar-fill ' + t.status + '" style="width:' + Math.min(100, t.pct * 100).toFixed(0) + '%"></div></div>' +
         '<div class="compare-card-figures"><span>' + fmtMoney(t.spent) + " de " + fmtMoney(t.budget) + '</span><span class="compare-card-pct">' + fmtPct(t.pct) + "</span></div>" +
+        deadlineHtml +
         "</button>"
       );
     }).join("");
@@ -1733,9 +1843,35 @@
       }).join("");
 
       var key = r === "__none__" ? "__none__" : r;
+      var previstoVal = key !== "__none__" ? Number(state.rubricaBudgets[key]) || 0 : 0;
+      var previstoHtml = "";
+      if (key !== "__none__") {
+        if (editingRubricaBudget === key) {
+          previstoHtml =
+            '<div class="rubrica-previsto editing">' +
+            '<label>Orçamento previsto para esta rubrica</label>' +
+            '<div class="rubrica-previsto-edit-row">' +
+            '<input type="text" inputmode="decimal" class="rubrica-budget-input" data-rubrica-budget-input="' + escapeHtml(key) + '" value="' + (previstoVal ? fmtMoneyPlain(previstoVal) : "") + '" placeholder="0,00" />' +
+            '<button class="btn" type="button" data-save-rubrica-budget="' + escapeHtml(key) + '">Salvar</button>' +
+            '<button class="btn subtle" type="button" data-cancel-rubrica-budget>Cancelar</button>' +
+            "</div></div>";
+        } else if (previstoVal > 0) {
+          var bs = budgetStatus(row.total, previstoVal);
+          var over = row.total - previstoVal;
+          previstoHtml =
+            '<div class="rubrica-previsto">' +
+            '<div class="rubrica-previsto-row"><span>Previsto x realizado</span><button class="row-edit" type="button" data-edit-rubrica-budget="' + escapeHtml(key) + '" title="Editar orçamento previsto">✎</button></div>' +
+            '<div class="bar-track"><div class="bar-fill ' + bs.status + '" style="width:' + Math.min(100, bs.pct * 100).toFixed(0) + '%"></div></div>' +
+            '<div class="rubrica-previsto-figures"><span>' + fmtMoney(row.total) + " de " + fmtMoney(previstoVal) + '</span><span class="pill ' + bs.status + '">' + (bs.status === "danger" ? "Excedeu em " + fmtMoney(over) : fmtPct(bs.pct)) + "</span></div>" +
+            "</div>";
+        } else {
+          previstoHtml = '<div class="rubrica-previsto"><button class="link-btn" type="button" data-edit-rubrica-budget="' + escapeHtml(key) + '">+ Definir orçamento previsto</button></div>';
+        }
+      }
+      var cardOpen = !!openRubricaCards[key];
       return (
         '<div class="rubrica-card">' +
-        '<button class="rubrica-card-head" type="button" data-toggle-rubrica="' + escapeHtml(key) + '">' +
+        '<button class="rubrica-card-head' + (cardOpen ? " open" : "") + '" type="button" data-toggle-rubrica="' + escapeHtml(key) + '">' +
         '<span class="rubrica-name">' + escapeHtml(label) + "</span>" +
         '<span class="rubrica-metrics">' +
         '<span class="rubrica-pct">' + fmtPct(pct / 100) + "</span>" +
@@ -1744,7 +1880,8 @@
         "</span>" +
         "</button>" +
         '<div class="bar-track"><div class="bar-fill rubrica-bar-fill" style="width:' + pct.toFixed(1) + '%"></div></div>' +
-        '<div class="rubrica-detail" data-rubrica-detail="' + escapeHtml(key) + '" hidden>' +
+        previstoHtml +
+        '<div class="rubrica-detail" data-rubrica-detail="' + escapeHtml(key) + '"' + (cardOpen ? "" : " hidden") + '>' +
         '<div class="rubrica-detail-grid">' +
         '<div><div class="rubrica-detail-title">Por projeto</div><div class="table-wrap"><table><thead><tr><th>Projeto</th><th class="val">Valor</th></tr></thead><tbody>' + projectRows + "</tbody></table></div></div>" +
         '<div><div class="rubrica-detail-title">Por mês</div><div class="table-wrap"><table><thead><tr><th>Mês</th><th class="val">Valor</th></tr></thead><tbody>' + monthRows + "</tbody></table></div></div>" +
@@ -1757,7 +1894,7 @@
     }).join("");
 
     return (
-      '<details class="section-card" data-rubricas>' +
+      '<details class="section-card"' + (rubricaSectionOpen ? " open" : "") + ' data-rubricas>' +
       '<summary>Gasto por rubrica <span class="summary-total">' + fmtMoney(totalAll) + "</span><span class=\"chev\">▶</span></summary>" +
       '<div class="rubrica-list">' + cards + "</div>" +
       "</details>"
@@ -2110,6 +2247,8 @@
       '<div class="' + cls + '" data-panel="' + p.id + '">' +
       titleBlockHtml +
       statusBannerHtml(t, null) +
+      cashBannerHtml(p, null) +
+      deadlineBannerHtml(p, null) +
       '<div class="proj-head">' +
       '<div class="proj-stats">' +
       '<div class="stat budget"><div class="label">Orçamento total</div><div class="value num">R$ <input type="text" inputmode="decimal" data-budget-input="' + p.id + '" value="' + fmtMoneyPlain(p.budget) + '" /></div></div>' +
@@ -2754,8 +2893,73 @@
         var detail = panels.querySelector('[data-rubrica-detail="' + key + '"]');
         if (!detail) return;
         var opening = detail.hasAttribute("hidden");
-        if (opening) { detail.removeAttribute("hidden"); btn.classList.add("open"); }
-        else { detail.setAttribute("hidden", ""); btn.classList.remove("open"); }
+        if (opening) { detail.removeAttribute("hidden"); btn.classList.add("open"); openRubricaCards[key] = true; }
+        else { detail.setAttribute("hidden", ""); btn.classList.remove("open"); delete openRubricaCards[key]; }
+      });
+    });
+
+    panels.querySelectorAll("[data-rubricas]").forEach(function (det) {
+      det.addEventListener("toggle", function () {
+        rubricaSectionOpen = det.open;
+      });
+    });
+
+    panels.querySelectorAll("[data-resumo-filter]").forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        var key = sel.getAttribute("data-resumo-filter");
+        resumoFilters[key] = sel.value;
+        renderAll();
+      });
+    });
+
+    panels.querySelectorAll("[data-clear-resumo-filters]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        resumoFilters = { law: "", status: "" };
+        renderAll();
+      });
+    });
+
+    panels.querySelectorAll("[data-edit-rubrica-budget]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingRubricaBudget = btn.getAttribute("data-edit-rubrica-budget");
+        rubricaSectionOpen = true;
+        openRubricaCards[editingRubricaBudget] = true;
+        renderAll();
+        var key = editingRubricaBudget;
+        setTimeout(function () {
+          var input = panels.querySelector('[data-rubrica-budget-input="' + key + '"]');
+          if (input) { input.focus(); input.select(); }
+        }, 0);
+      });
+    });
+
+    panels.querySelectorAll("[data-cancel-rubrica-budget]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingRubricaBudget = null;
+        renderAll();
+      });
+    });
+
+    panels.querySelectorAll("[data-save-rubrica-budget]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var key = btn.getAttribute("data-save-rubrica-budget");
+        var input = panels.querySelector('[data-rubrica-budget-input="' + key + '"]');
+        var val = input ? parseMoneyInput(input.value) : 0;
+        if (val > 0) state.rubricaBudgets[key] = val; else delete state.rubricaBudgets[key];
+        editingRubricaBudget = null;
+        renderAll();
+        persist();
+      });
+    });
+
+    panels.querySelectorAll("[data-rubrica-budget-input]").forEach(function (input) {
+      input.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          var key = input.getAttribute("data-rubrica-budget-input");
+          var saveBtn = panels.querySelector('[data-save-rubrica-budget="' + key + '"]');
+          if (saveBtn) saveBtn.click();
+        }
       });
     });
 
