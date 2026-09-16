@@ -1518,6 +1518,20 @@
     return { rowKeys: rowKeys, data: data };
   }
 
+  // Compara o texto de uma rubrica com o nome de um projeto de forma tolerante:
+  // ignora maiúsculas/minúsculas e acentos, e considera bater quando um dos
+  // textos começa com o outro — assim "Na Atividade" (rubrica) casa com um
+  // projeto chamado "Na Atividade 2400704" (nome + número de processo).
+  function normalizeRubricaName(s) {
+    return (s || "").toString().trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  }
+  function rubricaMatchesProjectName(rubricaLabel, projectName) {
+    var a = normalizeRubricaName(rubricaLabel);
+    var b = normalizeRubricaName(projectName);
+    if (!a || !b) return false;
+    return a === b || b.indexOf(a) === 0 || a.indexOf(b) === 0;
+  }
+
   // Execução da rubrica que leva o nome deste projeto: soma o que o próprio
   // projeto lançou nessa rubrica com o que outros projetos direcionaram a ela.
   function projectOwnRubricaExecution(p) {
@@ -1526,7 +1540,7 @@
     if (!name) return { own: 0, others: 0, total: 0, byOtherProject: {} };
     state.projects.forEach(function (proj) {
       proj.entries.forEach(function (e) {
-        if ((e.rubrica || "").trim() !== name) return;
+        if (!rubricaMatchesProjectName(e.rubrica, name)) return;
         var amt = Number(e.amount) || 0;
         if (proj.id === p.id) {
           own += amt;
@@ -1836,7 +1850,7 @@
 
       // Quando essa rubrica tem o mesmo nome de um projeto, mostra o total que esse
       // projeto executou nela: o que ele mesmo lançou + o que outros projetos direcionaram.
-      var matchProject = r !== "__none__" ? state.projects.find(function (pr) { return (pr.name || "").trim() === label; }) : null;
+      var matchProject = r !== "__none__" ? state.projects.find(function (pr) { return rubricaMatchesProjectName(label, pr.name); }) : null;
       var projectTotalHtml = "";
       if (matchProject) {
         var ownAmt = row.byProject[matchProject.id] || 0;
