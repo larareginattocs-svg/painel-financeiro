@@ -962,6 +962,14 @@
   .link-btn { background: none; border: none; padding: 0; color: var(--brand); font-weight: 600; font-size: 12.5px; cursor: pointer; font: inherit; }
   .link-btn:hover { text-decoration: underline; }
 
+  /* ---------- Execução da rubrica própria do projeto ---------- */
+  .rubrica-exec-note { font-size: 12px; color: var(--ink-soft); margin: 0 0 12px; }
+  .rubrica-exec-summary { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .rubrica-exec-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+  .rubrica-exec-row .val { font-weight: 600; }
+  .rubrica-exec-row.total { border-bottom: none; border-top: 2px solid var(--ink); margin-top: 4px; padding-top: 10px; font-size: 14.5px; }
+  .rubrica-exec-row.total .val { font-weight: 800; }
+
   /* ---------- Parcelas (installments) ---------- */
   .installment-form {
     display: grid;
@@ -1508,6 +1516,27 @@
       return data[b].total - data[a].total;
     });
     return { rowKeys: rowKeys, data: data };
+  }
+
+  // Execução da rubrica que leva o nome deste projeto: soma o que o próprio
+  // projeto lançou nessa rubrica com o que outros projetos direcionaram a ela.
+  function projectOwnRubricaExecution(p) {
+    var name = (p.name || "").trim();
+    var own = 0, others = 0, byOtherProject = {};
+    if (!name) return { own: 0, others: 0, total: 0, byOtherProject: {} };
+    state.projects.forEach(function (proj) {
+      proj.entries.forEach(function (e) {
+        if ((e.rubrica || "").trim() !== name) return;
+        var amt = Number(e.amount) || 0;
+        if (proj.id === p.id) {
+          own += amt;
+        } else {
+          others += amt;
+          byOtherProject[proj.id] = (byOtherProject[proj.id] || 0) + amt;
+        }
+      });
+    });
+    return { own: own, others: others, total: own + others, byOtherProject: byOtherProject };
   }
 
   function logHistory(p, action, description) {
@@ -2319,6 +2348,7 @@
       "</tr></thead><tbody data-entries-body=\"" + p.id + "\">" + rows + "</tbody></table></div>" +
 
       renderCounterpartsSection(p) +
+      renderProjectRubricaExecutionSection(p) +
       renderHistorySection(p) +
       "</div>"
     );
@@ -2382,6 +2412,29 @@
       '<summary>Histórico de alterações <span class="summary-total">' + items.length + (items.length === 1 ? " registro" : " registros") + '</span><span class="chev">▶</span></summary>' +
       (items.length ? '<div class="history-export-row"><button class="btn subtle" type="button" data-export-history="' + p.id + '">⬇ Exportar histórico (.csv)</button></div>' : "") +
       list +
+      "</details>"
+    );
+  }
+
+  function renderProjectRubricaExecutionSection(p) {
+    var ex = projectOwnRubricaExecution(p);
+    if (ex.total <= 0) return "";
+    var otherRows = Object.keys(ex.byOtherProject).map(function (pid) {
+      var proj = state.projects.find(function (x) { return x.id === pid; });
+      return { name: proj ? proj.name : "—", total: ex.byOtherProject[pid] };
+    }).sort(function (a, b) { return b.total - a.total; }).map(function (x) {
+      return "<tr><td>" + escapeHtml(x.name) + '</td><td class="val num">' + fmtMoney(x.total) + "</td></tr>";
+    }).join("");
+    return (
+      '<details class="section-card" data-rubrica-exec="' + p.id + '">' +
+      '<summary>Execução da rubrica “' + escapeHtml(p.name) + '” <span class="summary-total">' + fmtMoney(ex.total) + '</span><span class="chev">▶</span></summary>' +
+      '<p class="rubrica-exec-note">Total gasto em toda a plataforma com a rubrica direcionada a este projeto, somando o que o próprio projeto lançou com o que outros projetos direcionaram a ele.</p>' +
+      '<div class="rubrica-exec-summary">' +
+      '<div class="rubrica-exec-row"><span>Lançado neste projeto</span><span class="val num">' + fmtMoney(ex.own) + "</span></div>" +
+      '<div class="rubrica-exec-row"><span>Direcionado por outros projetos</span><span class="val num">' + fmtMoney(ex.others) + "</span></div>" +
+      '<div class="rubrica-exec-row total"><span>Total executado nesta rubrica</span><span class="val num">' + fmtMoney(ex.total) + "</span></div>" +
+      "</div>" +
+      (otherRows ? '<div class="rubrica-detail-title">Direcionado por outros projetos</div><div class="table-wrap"><table><thead><tr><th>Projeto</th><th class="val">Valor</th></tr></thead><tbody>' + otherRows + "</tbody></table></div>" : "") +
       "</details>"
     );
   }
