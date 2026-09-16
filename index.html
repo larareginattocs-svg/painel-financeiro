@@ -969,6 +969,8 @@
   .rubrica-exec-row .val { font-weight: 600; }
   .rubrica-exec-row.total { border-bottom: none; border-top: 2px solid var(--ink); margin-top: 4px; padding-top: 10px; font-size: 14.5px; }
   .rubrica-exec-row.total .val { font-weight: 800; }
+  .rubrica-exec-row.sub { padding: 4px 0 4px 16px; font-size: 12px; color: var(--ink-soft); border-bottom: none; }
+  .rubrica-exec-row.sub .val { font-weight: 600; color: var(--ink-soft); }
 
   /* ---------- Parcelas (installments) ---------- */
   .installment-form {
@@ -1855,11 +1857,32 @@
       if (matchProject) {
         var ownAmt = row.byProject[matchProject.id] || 0;
         var othersAmt = row.total - ownAmt;
+        // Quanto o próprio projeto (dono desta rubrica) gastou usando a rubrica de OUTROS
+        // projetos — ou seja, dinheiro que ele direcionou para fora da própria rubrica —
+        // agrupado pelo nome da rubrica/projeto de destino.
+        var spentElsewhere = 0;
+        var spentElsewhereByRubrica = {};
+        matchProject.entries.forEach(function (e) {
+          var er = (e.rubrica || "").trim();
+          if (!er) return;
+          if (rubricaMatchesProjectName(label, er)) return;
+          var amt = Number(e.amount) || 0;
+          spentElsewhere += amt;
+          spentElsewhereByRubrica[er] = (spentElsewhereByRubrica[er] || 0) + amt;
+        });
+        var spentElsewhereRows = Object.keys(spentElsewhereByRubrica).sort(function (a, b) {
+          return spentElsewhereByRubrica[b] - spentElsewhereByRubrica[a];
+        }).map(function (rn) {
+          return '<div class="rubrica-exec-row sub"><span>' + escapeHtml(rn) + '</span><span class="val num">' + fmtMoney(spentElsewhereByRubrica[rn]) + "</span></div>";
+        }).join("");
+        var grandTotal = ownAmt + othersAmt + spentElsewhere;
         projectTotalHtml =
           '<div class="rubrica-exec-summary">' +
           '<div class="rubrica-exec-row"><span>Usado pelo próprio projeto</span><span class="val num">' + fmtMoney(ownAmt) + "</span></div>" +
           '<div class="rubrica-exec-row"><span>Direcionado por outros projetos</span><span class="val num">' + fmtMoney(othersAmt) + "</span></div>" +
-          '<div class="rubrica-exec-row total"><span>Total executado nesta rubrica</span><span class="val num">' + fmtMoney(row.total) + "</span></div>" +
+          '<div class="rubrica-exec-row"><span>Gasto pelo próprio projeto em outras rubricas</span><span class="val num">' + fmtMoney(spentElsewhere) + "</span></div>" +
+          spentElsewhereRows +
+          '<div class="rubrica-exec-row total"><span>Total</span><span class="val num">' + fmtMoney(grandTotal) + "</span></div>" +
           "</div>";
       }
 
