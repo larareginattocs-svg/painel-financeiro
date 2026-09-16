@@ -1834,6 +1834,21 @@
         return "<tr><td>" + escapeHtml(x.name) + '</td><td class="val num">' + fmtMoney(x.total) + "</td></tr>";
       }).join("");
 
+      // Quando essa rubrica tem o mesmo nome de um projeto, mostra o total que esse
+      // projeto executou nela: o que ele mesmo lançou + o que outros projetos direcionaram.
+      var matchProject = r !== "__none__" ? state.projects.find(function (pr) { return (pr.name || "").trim() === label; }) : null;
+      var projectTotalHtml = "";
+      if (matchProject) {
+        var ownAmt = row.byProject[matchProject.id] || 0;
+        var othersAmt = row.total - ownAmt;
+        projectTotalHtml =
+          '<div class="rubrica-exec-summary">' +
+          '<div class="rubrica-exec-row"><span>Usado pelo próprio projeto</span><span class="val num">' + fmtMoney(ownAmt) + "</span></div>" +
+          '<div class="rubrica-exec-row"><span>Direcionado por outros projetos</span><span class="val num">' + fmtMoney(othersAmt) + "</span></div>" +
+          '<div class="rubrica-exec-row total"><span>Total executado nesta rubrica</span><span class="val num">' + fmtMoney(row.total) + "</span></div>" +
+          "</div>";
+      }
+
       var monthRows = Object.keys(row.byMonth).sort(function (a, b) {
         if (!a && !b) return 0;
         if (!a) return 1;
@@ -1889,7 +1904,7 @@
         previstoHtml +
         '<div class="rubrica-detail" data-rubrica-detail="' + escapeHtml(key) + '"' + (cardOpen ? "" : " hidden") + '>' +
         '<div class="rubrica-detail-grid">' +
-        '<div><div class="rubrica-detail-title">Por projeto</div><div class="table-wrap"><table><thead><tr><th>Projeto</th><th class="val">Valor</th></tr></thead><tbody>' + projectRows + "</tbody></table></div></div>" +
+        '<div><div class="rubrica-detail-title">Por projeto</div><div class="table-wrap"><table><thead><tr><th>Projeto</th><th class="val">Valor</th></tr></thead><tbody>' + projectRows + "</tbody></table></div>" + projectTotalHtml + "</div>" +
         '<div><div class="rubrica-detail-title">Por mês</div><div class="table-wrap"><table><thead><tr><th>Mês</th><th class="val">Valor</th></tr></thead><tbody>' + monthRows + "</tbody></table></div></div>" +
         "</div>" +
         '<div class="rubrica-detail-title">Lançamentos (' + row.entries.length + ")</div>" +
