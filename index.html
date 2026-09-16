@@ -2129,16 +2129,16 @@
       '<div class="form-grid">' +
       '<div class="field"><label>Data</label><input type="date" data-f="date" value="' + escapeHtml(editEntry ? editEntry.date : "") + '" /></div>' +
       '<div class="field"><label>Categoria</label><input type="text" data-f="category" list="categoryOptions" placeholder="Selecione ou digite uma nova" value="' + escapeHtml(editEntry ? editEntry.category : "") + '" /></div>' +
-      '<div class="field"><label>Descrição (opcional)</label><input type="text" data-f="description" placeholder="Descreva o gasto (opcional)" value="' + escapeHtml(editEntry ? editEntry.description : "") + '" /></div>' +
+      '<div class="field"><label>Descrição Real</label><input type="text" data-f="description" placeholder="Descreva o gasto (opcional)" value="' + escapeHtml(editEntry ? editEntry.description : "") + '" /></div>' +
       '<div class="field"><label>Valor (R$)</label><input type="number" step="0.01" min="0" data-f="amount" placeholder="0,00" value="' + escapeHtml(editEntry ? editEntry.amount : "") + '" /></div>' +
       '<div class="field"><label>Quantidade real</label><input type="number" step="1" min="0" data-f="realQuantity" placeholder="0" value="' + escapeHtml(editEntry && editEntry.realQuantity != null ? editEntry.realQuantity : "") + '" /></div>' +
       '<div class="field"><label>Pagamento</label><select data-f="payment"><option value="">Selecione…</option>' + payOptions + "</select></div>" +
       "</div>" +
       '<div class="fornecedor-cnpj-row entry-rh-inline">' +
-      '<div class="field-inline"><label>Rubrica</label><select data-f="rubrica"><option value="">Selecione…</option>' +
+      '<div class="field-inline"><label>Rubrica Direcionada</label><select data-f="rubrica"><option value="">Selecione…</option>' +
       RUBRICAS.map(function (r) { return '<option value="' + escapeHtml(r) + '"' + (editEntry && editEntry.rubrica === r ? " selected" : "") + ">" + escapeHtml(r) + "</option>"; }).join("") +
       "</select></div>" +
-      '<div class="field-inline"><label>Descrição do serviço</label><input type="text" data-f="serviceDescription" placeholder="Descreva o serviço prestado" value="' + escapeHtml(editEntry ? (editEntry.serviceDescription || "") : "") + '" /></div>' +
+      '<div class="field-inline"><label>Descritivo da Rubrica</label><input type="text" data-f="serviceDescription" placeholder="Descreva o serviço prestado" value="' + escapeHtml(editEntry ? (editEntry.serviceDescription || "") : "") + '" /></div>' +
       '<div class="field-inline"><label>Quantidade na rubrica</label><input type="number" step="1" min="0" data-f="quantity" placeholder="0" value="' + escapeHtml(editEntry && editEntry.quantity != null ? editEntry.quantity : "") + '" /></div>' +
       "</div>" +
       '<div class="fornecedor-cnpj-row entry-rh-inline"' + (isRH ? "" : " hidden") + ' data-rh-fields>' +
