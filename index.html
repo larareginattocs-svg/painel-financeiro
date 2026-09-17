@@ -1197,6 +1197,32 @@
         <input id="newProjDeadline" type="date" />
       </div>
     </div>
+    <div class="modal-grid-2">
+      <div class="field">
+        <label for="newProjStartDate">Data de início</label>
+        <input id="newProjStartDate" type="date" />
+      </div>
+      <div class="field">
+        <label for="newProjPcDeadline">Data final prestação de contas</label>
+        <input id="newProjPcDeadline" type="date" />
+      </div>
+    </div>
+    <div class="modal-grid-2">
+      <div class="field">
+        <label for="newProjPmo">PMO responsável</label>
+        <input id="newProjPmo" type="text" list="pmoResponsavelOptions" placeholder="Selecione ou digite um nome" />
+        <datalist id="pmoResponsavelOptions">
+          <option value="Marianna Muniz"></option>
+          <option value="Polyanna Mattei"></option>
+          <option value="Isabel Rosalho"></option>
+          <option value="Cleverson Dutra"></option>
+        </datalist>
+      </div>
+      <div class="field">
+        <label for="newProjSalesResp">Responsável pela venda</label>
+        <input id="newProjSalesResp" type="text" placeholder="Nome do responsável" />
+      </div>
+    </div>
     <div class="field">
       <label for="newProjSponsor">Patrocinador</label>
       <input id="newProjSponsor" type="text" placeholder="Nome do patrocinador" />
@@ -2266,7 +2292,11 @@
     var metaFields = [
       { key: "incentiveLaw", label: "Lei de incentivo" },
       { key: "projectNumber", label: "Número do projeto" },
+      { key: "startDate", label: "Data de início", isDate: true },
       { key: "deadline", label: "Prazo", isDate: true },
+      { key: "pcDeadline", label: "Data final prestação de contas", isDate: true },
+      { key: "pmoResponsavel", label: "PMO responsável" },
+      { key: "salesResponsavel", label: "Responsável pela venda" },
       { key: "sponsor", label: "Patrocinador" },
       { key: "responsibleCompany", label: "Empresa responsável" }
     ];
@@ -2283,7 +2313,7 @@
         '<div class="proj-meta-edit-grid">' +
         metaFields.map(function (mf) {
           var val = p[mf.key] || "";
-          var listAttr = mf.key === "incentiveLaw" ? ' list="incentiveLawOptions"' : "";
+          var listAttr = mf.key === "incentiveLaw" ? ' list="incentiveLawOptions"' : (mf.key === "pmoResponsavel" ? ' list="pmoResponsavelOptions"' : "");
           return '<div class="field"><label>' + escapeHtml(mf.label) + '</label><input type="' + (mf.isDate ? "date" : "text") + '"' + listAttr + ' data-project-meta-input="' + mf.key + '" value="' + escapeHtml(val) + '" /></div>';
         }).join("") +
         "</div>" +
@@ -2521,7 +2551,11 @@
     var metaFields = [
       { key: "incentiveLaw", label: "Lei de incentivo" },
       { key: "projectNumber", label: "Número do projeto" },
+      { key: "startDate", label: "Data de início", isDate: true },
       { key: "deadline", label: "Prazo", isDate: true },
+      { key: "pcDeadline", label: "Data final prestação de contas", isDate: true },
+      { key: "pmoResponsavel", label: "PMO responsável" },
+      { key: "salesResponsavel", label: "Responsável pela venda" },
       { key: "sponsor", label: "Patrocinador" },
       { key: "responsibleCompany", label: "Empresa responsável" }
     ];
@@ -2846,6 +2880,10 @@
       var lawEl = document.getElementById("newProjLaw");
       var numberEl = document.getElementById("newProjNumber");
       var deadlineEl = document.getElementById("newProjDeadline");
+      var startDateEl = document.getElementById("newProjStartDate");
+      var pcDeadlineEl = document.getElementById("newProjPcDeadline");
+      var pmoEl = document.getElementById("newProjPmo");
+      var salesRespEl = document.getElementById("newProjSalesResp");
       var sponsorEl = document.getElementById("newProjSponsor");
       var companyEl = document.getElementById("newProjCompany");
       var name = nameEl.value.trim();
@@ -2856,14 +2894,19 @@
       while (state.projects.some(function (p) { return p.id === id; })) { suffix++; id = baseId + "-" + suffix; }
       var newProj = { id: id, name: name, budget: Number(budgetEl.value) || 0, entries: [], installments: [], history: [], counterparts: [] };
       var incentiveLaw = lawEl.value.trim(), projectNumber = numberEl.value.trim(), deadline = deadlineEl.value, sponsor = sponsorEl.value.trim(), responsibleCompany = companyEl.value.trim();
+      var startDate = startDateEl.value, pcDeadline = pcDeadlineEl.value, pmoResponsavel = pmoEl.value.trim(), salesResponsavel = salesRespEl.value.trim();
       if (incentiveLaw) newProj.incentiveLaw = incentiveLaw;
       if (projectNumber) newProj.projectNumber = projectNumber;
       if (deadline) newProj.deadline = deadline;
+      if (startDate) newProj.startDate = startDate;
+      if (pcDeadline) newProj.pcDeadline = pcDeadline;
+      if (pmoResponsavel) newProj.pmoResponsavel = pmoResponsavel;
+      if (salesResponsavel) newProj.salesResponsavel = salesResponsavel;
       if (sponsor) newProj.sponsor = sponsor;
       if (responsibleCompany) newProj.responsibleCompany = responsibleCompany;
       logHistory(newProj, "add", "Projeto criado" + (newProj.budget ? " com orçamento de " + fmtMoney(newProj.budget) : ""));
       state.projects.push(newProj);
-      nameEl.value = ""; budgetEl.value = ""; lawEl.value = ""; numberEl.value = ""; deadlineEl.value = ""; sponsorEl.value = ""; companyEl.value = "";
+      nameEl.value = ""; budgetEl.value = ""; lawEl.value = ""; numberEl.value = ""; deadlineEl.value = ""; startDateEl.value = ""; pcDeadlineEl.value = ""; pmoEl.value = ""; salesRespEl.value = ""; sponsorEl.value = ""; companyEl.value = "";
       closeModal();
       activeTab = id;
       try { sessionStorage.setItem("painel-active-tab", id); } catch (e) {}
