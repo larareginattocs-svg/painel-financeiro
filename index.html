@@ -972,6 +972,52 @@
   .rubrica-exec-row.sub { padding: 4px 0 4px 16px; font-size: 12px; color: var(--ink-soft); border-bottom: none; }
   .rubrica-exec-row.sub .val { font-weight: 600; color: var(--ink-soft); }
 
+  /* ---------- Painel de PMOs ---------- */
+  .pmo-group { margin-bottom: 22px; }
+  .pmo-group-head { margin-bottom: 14px; }
+  .pmo-group-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 16px; font-weight: 700; color: var(--brand); margin-bottom: 8px; flex-wrap: wrap; }
+  .pmo-group-title .summary-total { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink-soft); font-weight: 500; }
+  .pmo-group-title-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pmo-group-name { line-height: 1; }
+  .pc-deadline-text.warn { color: var(--warn); font-weight: 600; }
+  .pc-deadline-text.danger { color: var(--danger); font-weight: 700; }
+
+  .pmo-avatar {
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--brand-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .pmo-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pmo-avatar-initials { font-weight: 700; color: var(--brand); }
+  .compare-card-name-wrap { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+  .compare-card-name-wrap .compare-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pmo-avatar-actions { display: flex; align-items: center; gap: 6px; }
+  .pmo-photo-btn {
+    cursor: pointer;
+    font-size: 13px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 7px;
+    line-height: 1;
+  }
+  .pmo-photo-btn:hover { border-color: var(--brand); }
+  .pmo-photo-remove {
+    cursor: pointer;
+    font-size: 12px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 7px;
+    color: var(--danger);
+    line-height: 1;
+  }
+  .pmo-photo-remove:hover { border-color: var(--danger); }
+
   /* ---------- Parcelas (installments) ---------- */
   .installment-form {
     display: grid;
@@ -1326,6 +1372,7 @@
     if (!Array.isArray(state.suppliers)) state.suppliers = [];
     if (!Array.isArray(state.people)) state.people = [];
     if (!state.rubricaBudgets || typeof state.rubricaBudgets !== "object") state.rubricaBudgets = {};
+    if (!state.pmoPhotos || typeof state.pmoPhotos !== "object") state.pmoPhotos = {};
   }
 
   function findSupplierById(id) {
@@ -1356,6 +1403,7 @@
   var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "counterpart" | "supplier" | "person" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,dataUrl} (new file staged), null (explicit removal), or undefined (no change)
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
+  var MAX_PMO_PHOTO_BYTES = 2 * 1024 * 1024; // 2MB — foto de perfil do PMO
   var filterState = {}; // pid -> { text, category, payment, from, to } — view-local, not persisted
   var canWrite = null; // null = unknown yet, true/false once resolved
   var pendingSave = false;
@@ -1470,16 +1518,25 @@
 
   var DEADLINE_WARN_DAYS = 30;
 
-  function deadlineInfo(p) {
-    if (!p.deadline) return null;
+  function dateInfoFor(dateStr) {
+    if (!dateStr) return null;
     var today = new Date(); today.setHours(0, 0, 0, 0);
-    var dl = new Date(p.deadline + "T00:00:00");
+    var dl = new Date(dateStr + "T00:00:00");
     if (isNaN(dl.getTime())) return null;
     var days = Math.round((dl.getTime() - today.getTime()) / 86400000);
     var status = "ok";
     if (days < 0) status = "danger";
     else if (days <= DEADLINE_WARN_DAYS) status = "warn";
-    return { days: days, status: status, date: p.deadline };
+    return { days: days, status: status, date: dateStr };
+  }
+
+  function deadlineInfo(p) {
+    return dateInfoFor(p.deadline);
+  }
+
+  // Prazo da prestação de contas (data final) — mesma lógica de alerta do prazo geral.
+  function pcDeadlineInfo(p) {
+    return dateInfoFor(p.pcDeadline);
   }
 
   function statusLabel(status) {
@@ -1620,6 +1677,7 @@
     html += tabButton("resumo", "Resumo", null, "📊");
     html += tabButton("fornecedores", "Fornecedores", null, "🏷️");
     html += tabButton("pessoas", "Recursos Humanos", null, "🧑‍💼");
+    html += tabButton("pmos", "Painel de PMOs", null, "🧭");
     state.projects.forEach(function (p) {
       var t = projectTotals(p);
       html += tabButton(p.id, p.name, t.status, "📁");
@@ -1639,6 +1697,7 @@
     html += renderResumoPanel();
     html += renderFornecedoresPanel();
     html += renderPessoasPanel();
+    html += renderPmoPanel();
     state.projects.forEach(function (p) { html += renderProjectPanel(p); });
     document.getElementById("panels").innerHTML = html;
   }
@@ -2104,6 +2163,149 @@
       '<div class="table-wrap"><table><thead><tr>' +
       "<th>Nome</th><th>Cargo</th><th>Formato</th><th>Ações</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "</div>"
+    );
+  }
+
+  // ---------------- Painel de PMOs ----------------
+
+  function initialsFor(name) {
+    var parts = (name || "").trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return "?";
+    var first = parts[0].charAt(0);
+    var last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : "";
+    return (first + last).toUpperCase();
+  }
+
+  function pmoAvatarImgHtml(label, size) {
+    var photo = state.pmoPhotos && state.pmoPhotos[label];
+    var style = "width:" + size + "px;height:" + size + "px;font-size:" + Math.max(10, Math.round(size * 0.38)) + "px";
+    if (photo) {
+      return '<div class="pmo-avatar" style="' + style + '"><img src="' + photo + '" alt="' + escapeHtml(label) + '" /></div>';
+    }
+    return '<div class="pmo-avatar" style="' + style + '"><span class="pmo-avatar-initials">' + escapeHtml(initialsFor(label)) + "</span></div>";
+  }
+
+  function pmoAvatarActionsHtml(label) {
+    var photo = state.pmoPhotos && state.pmoPhotos[label];
+    return (
+      '<div class="pmo-avatar-actions">' +
+      '<label class="pmo-photo-btn" title="' + (photo ? "Trocar foto" : "Adicionar foto") + '">📷<input type="file" accept="image/*" data-pmo-photo-input="' + escapeHtml(label) + '" hidden /></label>' +
+      (photo ? '<button type="button" class="pmo-photo-remove" data-remove-pmo-photo="' + escapeHtml(label) + '" title="Remover foto">✕</button>' : "") +
+      "</div>"
+    );
+  }
+
+  // Agrupa os projetos por PMO responsável (ou "Sem PMO definido" quando o
+  // campo não foi preenchido) e soma orçamento/gasto/alertas de prazo de cada grupo.
+  function pmoGroups() {
+    var groups = {};
+    state.projects.forEach(function (p) {
+      var label = (p.pmoResponsavel || "").trim() || "Sem PMO definido";
+      if (!groups[label]) groups[label] = { label: label, projects: [] };
+      groups[label].projects.push(p);
+    });
+    var keys = Object.keys(groups).sort(function (a, b) {
+      if (a === "Sem PMO definido") return 1;
+      if (b === "Sem PMO definido") return -1;
+      return a.localeCompare(b, "pt-BR");
+    });
+    return keys.map(function (k) {
+      var g = groups[k];
+      var budget = 0, spent = 0, pcAlerts = 0;
+      g.projects.forEach(function (p) {
+        var t = projectTotals(p);
+        budget += t.budget;
+        spent += t.spent;
+        var pci = pcDeadlineInfo(p);
+        if (pci && pci.status !== "ok") pcAlerts++;
+      });
+      var bs = budgetStatus(spent, budget);
+      return { label: g.label, projects: g.projects, budget: budget, spent: spent, pct: bs.pct, status: bs.status, pcAlerts: pcAlerts };
+    });
+  }
+
+  function renderPmoPanel() {
+    var cls = "panel" + (activeTab === "pmos" ? " active" : "");
+    if (state.projects.length === 0) {
+      return (
+        '<div class="' + cls + '" data-panel="pmos">' +
+        '<div class="section-title-row"><div class="section-title">Painel de PMOs</div></div>' +
+        '<div class="empty-state"><span class="empty-ico">🧭</span><span>Nenhum projeto cadastrado ainda.</span></div>' +
+        "</div>"
+      );
+    }
+
+    var groups = pmoGroups();
+    var statusOrder = { danger: 0, warn: 1, ok: 2, neutral: 3 };
+    var sortedForCards = groups.slice().sort(function (a, b) {
+      var sa = statusOrder[a.status] != null ? statusOrder[a.status] : 4;
+      var sb = statusOrder[b.status] != null ? statusOrder[b.status] : 4;
+      if (sa !== sb) return sa - sb;
+      return b.pct - a.pct;
+    });
+    var cardsHtml = sortedForCards.map(function (g) {
+      var alertBadge = g.pcAlerts > 0 ? '<span class="pill warn">' + g.pcAlerts + (g.pcAlerts === 1 ? " prazo" : " prazos") + "</span>" : "";
+      return (
+        '<div class="compare-card" data-pmo-card="' + escapeHtml(g.label) + '">' +
+        '<div class="compare-card-head"><span class="compare-card-name-wrap">' + pmoAvatarImgHtml(g.label, 26) + '<span class="compare-card-name">' + escapeHtml(g.label) + "</span></span>" + alertBadge + "</div>" +
+        '<div class="bar-track"><div class="bar-fill ' + g.status + '" style="width:' + Math.min(100, g.pct * 100).toFixed(0) + '%"></div></div>' +
+        '<div class="compare-card-figures"><span>' + fmtMoney(g.spent) + " de " + fmtMoney(g.budget) + '</span><span class="compare-card-pct">' + fmtPct(g.pct) + "</span></div>" +
+        '<div class="compare-card-deadline">' + g.projects.length + (g.projects.length === 1 ? " projeto" : " projetos") + "</div>" +
+        "</div>"
+      );
+    }).join("");
+
+    var groupSections = groups.map(function (g) {
+      var rows = g.projects.slice().sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", "pt-BR"); }).map(function (p) {
+        var t = projectTotals(p);
+        var pci = pcDeadlineInfo(p);
+        var pcText = pci ? fmtDate(pci.date) : "—";
+        var pcCls = pci ? pci.status : "";
+        return (
+          '<tr class="project-row" data-goto-project="' + p.id + '" style="cursor:pointer">' +
+          '<td data-label="Projeto"><span class="cell-label">Projeto</span>' + escapeHtml(p.name) + "</td>" +
+          '<td data-label="Responsável pela venda"><span class="cell-label">Responsável pela venda</span>' + escapeHtml(p.salesResponsavel || "—") + "</td>" +
+          '<td class="val num" data-label="Orçamento"><span class="cell-label">Orçamento</span>' + fmtMoney(t.budget) + "</td>" +
+          '<td class="val num" data-label="Gasto"><span class="cell-label">Gasto</span>' + fmtMoney(t.spent) + "</td>" +
+          '<td class="val" data-label="Execução"><span class="cell-label">Execução</span><div class="bar-track" style="max-width:90px;margin-left:auto"><div class="bar-fill ' + t.status + '" style="width:' + Math.min(100, t.pct * 100).toFixed(0) + '%"></div></div></td>' +
+          '<td data-label="Status"><span class="cell-label">Status</span><span class="pill ' + t.status + '">' + statusLabel(t.status) + "</span></td>" +
+          '<td data-label="Prazo prestação de contas"><span class="cell-label">Prazo prestação de contas</span><span class="pc-deadline-text ' + pcCls + '">' + pcText + "</span></td>" +
+          "</tr>"
+        );
+      }).join("");
+
+      var alertHtml = "";
+      if (g.pcAlerts > 0) {
+        alertHtml = '<div class="status-banner warn"><span class="ico">⏰</span><span>' +
+          g.pcAlerts + (g.pcAlerts === 1 ? " projeto com prazo de prestação de contas vencendo em até " : " projetos com prazo de prestação de contas vencendo em até ") +
+          DEADLINE_WARN_DAYS + " dias (ou já vencido).</span></div>";
+      }
+
+      return (
+        '<div class="form-card pmo-group">' +
+        '<div class="pmo-group-head">' +
+        '<div class="pmo-group-title">' +
+        '<div class="pmo-group-title-left">' + pmoAvatarImgHtml(g.label, 44) + '<span class="pmo-group-name">' + escapeHtml(g.label) + "</span>" +
+        (g.label !== "Sem PMO definido" ? pmoAvatarActionsHtml(g.label) : "") +
+        "</div>" +
+        '<span class="summary-total">' + g.projects.length + (g.projects.length === 1 ? " projeto" : " projetos") + "</span></div>" +
+        '<div class="bar-track"><div class="bar-fill ' + g.status + '" style="width:' + Math.min(100, g.pct * 100).toFixed(0) + '%"></div></div>' +
+        '<div class="compare-card-figures"><span>' + fmtMoney(g.spent) + " de " + fmtMoney(g.budget) + '</span><span class="compare-card-pct">' + fmtPct(g.pct) + "</span></div>" +
+        "</div>" +
+        alertHtml +
+        '<div class="table-wrap"><table><thead><tr>' +
+        "<th>Projeto</th><th>Responsável pela venda</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Execução</th><th>Status</th><th>Prazo prestação de contas</th>" +
+        "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+        "</div>"
+      );
+    }).join("");
+
+    return (
+      '<div class="' + cls + '" data-panel="pmos">' +
+      '<div class="section-title-row"><div class="section-title">Painel de PMOs</div></div>' +
+      '<div class="compare-grid">' + cardsHtml + "</div>" +
+      groupSections +
       "</div>"
     );
   }
@@ -2946,7 +3148,7 @@
   }
   function closeModal() {
     document.getElementById("overlay").classList.remove("open");
-    ["newProjName", "newProjBudget", "newProjLaw", "newProjNumber", "newProjDeadline", "newProjSponsor", "newProjCompany"].forEach(function (id) {
+    ["newProjName", "newProjBudget", "newProjLaw", "newProjNumber", "newProjDeadline", "newProjStartDate", "newProjPcDeadline", "newProjPmo", "newProjSalesResp", "newProjSponsor", "newProjCompany"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.value = "";
     });
@@ -3393,6 +3595,42 @@
     panels.querySelectorAll("[data-export-history]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         exportProjectHistory(btn.getAttribute("data-export-history"));
+      });
+    });
+
+    panels.querySelectorAll("[data-pmo-photo-input]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var label = input.getAttribute("data-pmo-photo-input");
+        var file = input.files && input.files[0];
+        if (!file) return;
+        var isImage = (file.type && file.type.indexOf("image/") === 0) || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(file.name);
+        if (!isImage) {
+          alert("Envie uma foto/imagem.");
+          input.value = "";
+          return;
+        }
+        if (file.size > MAX_PMO_PHOTO_BYTES) {
+          alert("Imagem muito grande (máx. 2MB).");
+          input.value = "";
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          if (!state.pmoPhotos || typeof state.pmoPhotos !== "object") state.pmoPhotos = {};
+          state.pmoPhotos[label] = reader.result;
+          renderAll();
+          persist();
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    panels.querySelectorAll("[data-remove-pmo-photo]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var label = btn.getAttribute("data-remove-pmo-photo");
+        if (state.pmoPhotos) delete state.pmoPhotos[label];
+        renderAll();
+        persist();
       });
     });
 
