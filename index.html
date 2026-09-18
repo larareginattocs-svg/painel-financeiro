@@ -1469,9 +1469,45 @@
   var editingProjectName = null; // id of project whose name field is currently open for editing
   var editingRubricaBudget = null; // rubrica key whose "orçamento previsto" field is currently open for editing
   var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "counterpart" | "supplier" | "person" — awaiting confirm in the delete modal
-  var pendingAttachment = {}; // pid -> {name,dataUrl} (new file staged), null (explicit removal), or undefined (no change)
+  var pendingAttachment = {}; // pid -> {name,path,type} (new file staged & already uploaded to Storage), {name,dataUrl} (legacy, pre-migração), null (explicit removal), or undefined (no change)
+  var attachmentUploading = {}; // pid -> true while a file is mid-upload to Storage
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
   var MAX_PMO_PHOTO_BYTES = 2 * 1024 * 1024; // 2MB — foto de perfil do PMO
+  var ATTACH_BUCKET = "comprovantes"; // bucket privado — precisa de URL assinada pra visualizar
+  var PMO_PHOTO_BUCKET = "pmo-photos"; // bucket público — fotos de perfil/equipe
+
+  function sanitizeFileName(name) {
+    var base = (name || "arquivo").normalize("NFD").replace(/[̀-ͯ]/g, "");
+    base = base.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    return base.slice(-80) || "arquivo";
+  }
+
+  // Faz upload de um arquivo pro Storage e devolve o path salvo (não a URL — o bucket é privado).
+  async function uploadToBucket(bucket, folder, file) {
+    var path = folder + "/" + Date.now() + "-" + Math.floor(Math.random() * 1e6) + "-" + sanitizeFileName(file.name);
+    var res = await supabase.storage.from(bucket).upload(path, file, { contentType: file.type || undefined, upsert: false });
+    if (res.error) throw res.error;
+    return res.data.path;
+  }
+
+  // Bucket público (fotos) — devolve a URL final direto, sem precisar assinar.
+  function publicUrlFor(bucket, path) {
+    var res = supabase.storage.from(bucket).getPublicUrl(path);
+    return res.data && res.data.publicUrl;
+  }
+
+  // Bucket privado (comprovantes) — a URL expira, então é gerada só na hora de visualizar.
+  async function signedUrlFor(bucket, path, expiresInSeconds) {
+    var res = await supabase.storage.from(bucket).createSignedUrl(path, expiresInSeconds || 3600);
+    if (res.error) throw res.error;
+    return res.data.signedUrl;
+  }
+
+  // Melhor esforço: apaga o arquivo antigo do Storage. Nunca bloqueia a ação principal se falhar.
+  function removeFromBucketBestEffort(bucket, path) {
+    if (!path) return;
+    try { supabase.storage.from(bucket).remove([path]).catch(function () {}); } catch (e) {}
+  }
   var filterState = {}; // pid -> { text, category, payment, from, to } — view-local, not persisted
   var canWrite = null; // null = unknown yet, true/false once resolved
   var pendingSave = false;
@@ -2438,8 +2474,12 @@
     });
   }
 
+  function hasAttachment(att) {
+    return !!(att && (att.dataUrl || att.path));
+  }
+
   function entryRowHtml(p, e) {
-    var hasAttach = !!(e.attachment && e.attachment.dataUrl);
+    var hasAttach = hasAttachment(e.attachment);
     var badges = "";
     if (hasAttach) badges += '<span class="row-badge" title="Tem anexo">📎</span>';
     if (e.link) badges += '<span class="row-badge" title="Tem link">🔗</span>';
@@ -2561,7 +2601,7 @@
     var t = projectTotals(p);
     var editEntry = (editing && editing.pid === p.id) ? p.entries.find(function (e) { return e.id === editing.eid; }) : null;
     var isRH = !!(editEntry && editEntry.category === RH_CATEGORY);
-    var hasExtraDetails = !!(editEntry && (editEntry.refMonth || editEntry.supplier || editEntry.cnpj || editEntry.cnpjNA || editEntry.notes || editEntry.link || (editEntry.attachment && editEntry.attachment.dataUrl)));
+    var hasExtraDetails = !!(editEntry && (editEntry.refMonth || editEntry.supplier || editEntry.cnpj || editEntry.cnpjNA || editEntry.notes || editEntry.link || hasAttachment(editEntry.attachment)));
     var matchedSupplier = editEntry && editEntry.supplier ? findSupplierByName(editEntry.supplier) : null;
     var supplierSelectValue = matchedSupplier ? matchedSupplier.id : (editEntry && editEntry.supplier ? "__other__" : "");
     var supplierOtherVisible = supplierSelectValue === "__other__";
@@ -2894,7 +2934,7 @@
         var cnpj = e.cnpjNA ? "Não se aplica" : (e.cnpj || "—");
         var comprovante = e.link
           ? '<a href="' + escapeHtml(e.link) + '" target="_blank" rel="noopener noreferrer">🔗 Ver comprovante</a>'
-          : ((e.attachment && e.attachment.dataUrl) ? '<span class="pr-comprovante-muted">📎 Anexado no sistema</span>' : '<span class="pr-comprovante-muted">—</span>');
+          : (hasAttachment(e.attachment) ? '<span class="pr-comprovante-muted">📎 Anexado no sistema</span>' : '<span class="pr-comprovante-muted">—</span>');
         return "<tr>" +
           "<td>" + fmtDate(e.date) + "</td>" +
           "<td>" + escapeHtml(entryLabel(e)) + "</td>" +
@@ -3727,14 +3767,18 @@
           input.value = "";
           return;
         }
-        var reader = new FileReader();
-        reader.onload = function () {
+        input.disabled = true;
+        uploadToBucket(PMO_PHOTO_BUCKET, "avatars", file).then(function (path) {
+          input.disabled = false;
           if (!state.pmoPhotos || typeof state.pmoPhotos !== "object") state.pmoPhotos = {};
-          state.pmoPhotos[label] = reader.result;
+          state.pmoPhotos[label] = publicUrlFor(PMO_PHOTO_BUCKET, path);
           renderAll();
           persist();
-        };
-        reader.readAsDataURL(file);
+        }).catch(function () {
+          input.disabled = false;
+          input.value = "";
+          alert("Não foi possível enviar a foto. Tente novamente.");
+        });
       });
     });
 
@@ -3768,9 +3812,14 @@
         var file = fileInput.files && fileInput.files[0];
         if (file) {
           if (file.size > MAX_PMO_PHOTO_BYTES) { alert("Imagem muito grande (máx. 2MB)."); return; }
-          var reader = new FileReader();
-          reader.onload = function () { pushMember(reader.result); };
-          reader.readAsDataURL(file);
+          btn.disabled = true;
+          uploadToBucket(PMO_PHOTO_BUCKET, "team", file).then(function (path) {
+            btn.disabled = false;
+            pushMember(publicUrlFor(PMO_PHOTO_BUCKET, path));
+          }).catch(function () {
+            btn.disabled = false;
+            alert("Não foi possível enviar a foto. Tente novamente.");
+          });
         } else {
           pushMember("");
         }
@@ -3808,15 +3857,21 @@
           input.value = "";
           return;
         }
-        var reader = new FileReader();
-        reader.onload = function () {
-          pendingAttachment[pid] = { name: file.name, dataUrl: reader.result, type: file.type || (isPdf ? "application/pdf" : "image/*") };
+        attachmentUploading[pid] = true;
+        if (errEl) errEl.textContent = "Enviando…";
+        input.disabled = true;
+        uploadToBucket(ATTACH_BUCKET, pid, file).then(function (path) {
+          attachmentUploading[pid] = false;
+          input.disabled = false;
+          if (errEl) errEl.textContent = "";
+          pendingAttachment[pid] = { name: file.name, path: path, type: file.type || (isPdf ? "application/pdf" : "image/*") };
           refreshAttachChip(pid);
-        };
-        reader.onerror = function () {
-          if (errEl) errEl.textContent = "Não foi possível ler o arquivo. Tente novamente.";
-        };
-        reader.readAsDataURL(file);
+        }).catch(function (err) {
+          attachmentUploading[pid] = false;
+          input.disabled = false;
+          input.value = "";
+          if (errEl) errEl.textContent = "Não foi possível enviar o arquivo. Tente novamente.";
+        });
       });
     });
 
@@ -4064,7 +4119,22 @@
         var opening = preview.hasAttribute("hidden");
         if (opening) {
           var frame = preview.querySelector("[data-attach-frame]");
-          if (frame && !frame.getAttribute("src")) frame.setAttribute("src", entry.attachment.dataUrl);
+          if (frame && !frame.getAttribute("src")) {
+            if (entry.attachment.dataUrl) {
+              // Anexo antigo (pré-migração) — já vem embutido no estado.
+              frame.setAttribute("src", entry.attachment.dataUrl);
+            } else if (entry.attachment.path) {
+              // Anexo novo — vive no Storage (bucket privado); a URL é gerada na hora e expira.
+              btn.disabled = true;
+              signedUrlFor(ATTACH_BUCKET, entry.attachment.path, 3600).then(function (url) {
+                frame.setAttribute("src", url);
+                btn.disabled = false;
+              }).catch(function () {
+                btn.disabled = false;
+                alert("Não foi possível carregar o anexo agora. Tente novamente.");
+              });
+            }
+          }
           preview.removeAttribute("hidden");
           btn.textContent = "📎 Fechar";
         } else {
