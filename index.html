@@ -107,9 +107,11 @@
   }
 
   .shell {
-    max-width: 1240px;
+    width: 100%;
+    max-width: 1800px;
     margin: 0 auto;
-    padding: 28px 24px 80px;
+    padding: 28px clamp(16px, 3%, 60px) 80px;
+    box-sizing: border-box;
   }
 
   /* ---------- Header ---------- */
