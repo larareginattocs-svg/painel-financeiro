@@ -1018,6 +1018,35 @@
   }
   .pmo-photo-remove:hover { border-color: var(--danger); }
 
+  .pmo-team { margin: 4px 0 16px; padding-top: 12px; border-top: 1px dashed var(--border); }
+  .pmo-team-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); margin-bottom: 8px; }
+  .pmo-team-empty { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 10px; }
+  .pmo-team-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .pmo-team-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 8px 3px 3px;
+  }
+  .pmo-team-chip-name { font-size: 12.5px; font-weight: 600; }
+  .pmo-team-chip-remove { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 11px; padding: 0; line-height: 1; }
+  .pmo-team-chip-remove:hover { color: var(--danger); }
+  .pmo-team-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pmo-team-name-input {
+    flex: 1;
+    min-width: 160px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: 7px;
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 13.5px;
+  }
+
   /* ---------- Parcelas (installments) ---------- */
   .installment-form {
     display: grid;
@@ -1358,6 +1387,7 @@
   var CATEGORIES = ["Recursos Humanos", "Material Esportivo", "Divulgação", "Transporte", "Alimentação", "Serviços/Terceiros", "Locação de Espaço", "Administrativo", "Equipamentos", "Outros"];
   var PAYMENTS = ["Boleto", "Transferência", "Pix", "Cartão", "Dinheiro", "Outro"];
   var FORMATOS = ["PJ", "CLT", "TEMPORÁRIO", "BOLSA AUXÍLIO", "MEI", "DIÁRIA/CACHÊ"];
+  var PMO_NAMES = ["Marianna Muniz", "Polyanna Mattei", "Isabel Rosalho", "Cleverson Dutra"];
   // As opções de "Rubrica Direcionada" são os nomes de todos os projetos cadastrados
   // no sistema (ordem alfabética) — se o lançamento já tiver uma rubrica antiga que não
   // corresponde a nenhum projeto atual (ex.: projeto renomeado/excluído), ela é mantida
@@ -1384,6 +1414,7 @@
     if (!Array.isArray(state.people)) state.people = [];
     if (!state.rubricaBudgets || typeof state.rubricaBudgets !== "object") state.rubricaBudgets = {};
     if (!state.pmoPhotos || typeof state.pmoPhotos !== "object") state.pmoPhotos = {};
+    if (!state.pmoTeams || typeof state.pmoTeams !== "object") state.pmoTeams = {};
   }
 
   function findSupplierById(id) {
@@ -2207,10 +2238,47 @@
     );
   }
 
+  // Lista da equipe de cada PMO (nome + foto), cadastrada com antecedência,
+  // independente de já ter algum projeto vinculado.
+  function renderPmoTeamHtml(label) {
+    var members = (state.pmoTeams && state.pmoTeams[label]) || [];
+    var chips = members.map(function (m) {
+      var inner = m.photo
+        ? '<img src="' + m.photo + '" alt="' + escapeHtml(m.name) + '" />'
+        : '<span class="pmo-avatar-initials">' + escapeHtml(initialsFor(m.name)) + "</span>";
+      return (
+        '<div class="pmo-team-chip">' +
+        '<div class="pmo-avatar" style="width:30px;height:30px;font-size:11px">' + inner + "</div>" +
+        '<span class="pmo-team-chip-name">' + escapeHtml(m.name) + "</span>" +
+        '<button type="button" class="pmo-team-chip-remove" data-team-label="' + escapeHtml(label) + '" data-remove-team-member="' + escapeHtml(m.id) + '" title="Remover da equipe">✕</button>' +
+        "</div>"
+      );
+    }).join("");
+    return (
+      '<div class="pmo-team">' +
+      '<div class="pmo-team-label">Equipe</div>' +
+      (chips ? '<div class="pmo-team-chips">' + chips + "</div>" : '<div class="pmo-team-empty">Nenhum membro cadastrado ainda.</div>') +
+      '<div class="pmo-team-form" data-team-form="' + escapeHtml(label) + '">' +
+      '<input type="text" class="pmo-team-name-input" placeholder="Nome do membro da equipe" />' +
+      '<label class="pmo-photo-btn" title="Escolher foto (opcional)">📷<input type="file" accept="image/*" class="pmo-team-photo-input" hidden /></label>' +
+      '<button type="button" class="btn subtle pmo-team-add-btn" data-add-team-member="' + escapeHtml(label) + '">+ Adicionar</button>' +
+      "</div>" +
+      "</div>"
+    );
+  }
+
   // Agrupa os projetos por PMO responsável (ou "Sem PMO definido" quando o
   // campo não foi preenchido) e soma orçamento/gasto/alertas de prazo de cada grupo.
   function pmoGroups() {
     var groups = {};
+    // Sempre mostra os PMOs conhecidos (lista fixa) e os que já têm equipe cadastrada,
+    // mesmo que ainda não tenham nenhum projeto — assim dá pra montar a equipe com antecedência.
+    PMO_NAMES.forEach(function (name) {
+      if (!groups[name]) groups[name] = { label: name, projects: [] };
+    });
+    Object.keys(state.pmoTeams || {}).forEach(function (name) {
+      if ((state.pmoTeams[name] || []).length && !groups[name]) groups[name] = { label: name, projects: [] };
+    });
     state.projects.forEach(function (p) {
       var label = (p.pmoResponsavel || "").trim() || "Sem PMO definido";
       if (!groups[label]) groups[label] = { label: label, projects: [] };
@@ -2238,16 +2306,15 @@
 
   function renderPmoPanel() {
     var cls = "panel" + (activeTab === "pmos" ? " active" : "");
-    if (state.projects.length === 0) {
+    var groups = pmoGroups();
+    if (groups.length === 0) {
       return (
         '<div class="' + cls + '" data-panel="pmos">' +
         '<div class="section-title-row"><div class="section-title">Painel de PMOs</div></div>' +
-        '<div class="empty-state"><span class="empty-ico">🧭</span><span>Nenhum projeto cadastrado ainda.</span></div>' +
+        '<div class="empty-state"><span class="empty-ico">🧭</span><span>Nenhum PMO cadastrado ainda.</span></div>' +
         "</div>"
       );
     }
-
-    var groups = pmoGroups();
     var statusOrder = { danger: 0, warn: 1, ok: 2, neutral: 3 };
     var sortedForCards = groups.slice().sort(function (a, b) {
       var sa = statusOrder[a.status] != null ? statusOrder[a.status] : 4;
@@ -2293,6 +2360,12 @@
           DEADLINE_WARN_DAYS + " dias (ou já vencido).</span></div>";
       }
 
+      var tableHtml = rows
+        ? '<div class="table-wrap"><table><thead><tr>' +
+          "<th>Projeto</th><th>Responsável pela venda</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Execução</th><th>Status</th><th>Prazo prestação de contas</th>" +
+          "</tr></thead><tbody>" + rows + "</tbody></table></div>"
+        : '<div class="empty-state"><span class="empty-ico">📁</span><span>Nenhum projeto direcionado a este PMO ainda.</span></div>';
+
       return (
         '<div class="form-card pmo-group">' +
         '<div class="pmo-group-head">' +
@@ -2304,10 +2377,9 @@
         '<div class="bar-track"><div class="bar-fill ' + g.status + '" style="width:' + Math.min(100, g.pct * 100).toFixed(0) + '%"></div></div>' +
         '<div class="compare-card-figures"><span>' + fmtMoney(g.spent) + " de " + fmtMoney(g.budget) + '</span><span class="compare-card-pct">' + fmtPct(g.pct) + "</span></div>" +
         "</div>" +
+        (g.label !== "Sem PMO definido" ? renderPmoTeamHtml(g.label) : "") +
         alertHtml +
-        '<div class="table-wrap"><table><thead><tr>' +
-        "<th>Projeto</th><th>Responsável pela venda</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Execução</th><th>Status</th><th>Prazo prestação de contas</th>" +
-        "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+        tableHtml +
         "</div>"
       );
     }).join("");
@@ -3640,6 +3712,46 @@
       btn.addEventListener("click", function () {
         var label = btn.getAttribute("data-remove-pmo-photo");
         if (state.pmoPhotos) delete state.pmoPhotos[label];
+        renderAll();
+        persist();
+      });
+    });
+
+    panels.querySelectorAll("[data-add-team-member]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var label = btn.getAttribute("data-add-team-member");
+        var form = btn.closest("[data-team-form]");
+        if (!form) return;
+        var nameInput = form.querySelector(".pmo-team-name-input");
+        var fileInput = form.querySelector(".pmo-team-photo-input");
+        var name = nameInput.value.trim();
+        if (!name) { nameInput.focus(); return; }
+        function pushMember(photo) {
+          if (!state.pmoTeams || typeof state.pmoTeams !== "object") state.pmoTeams = {};
+          if (!Array.isArray(state.pmoTeams[label])) state.pmoTeams[label] = [];
+          state.pmoTeams[label].push({ id: "tm" + Date.now() + Math.floor(Math.random() * 1000), name: name, photo: photo || "" });
+          renderAll();
+          persist();
+        }
+        var file = fileInput.files && fileInput.files[0];
+        if (file) {
+          if (file.size > MAX_PMO_PHOTO_BYTES) { alert("Imagem muito grande (máx. 2MB)."); return; }
+          var reader = new FileReader();
+          reader.onload = function () { pushMember(reader.result); };
+          reader.readAsDataURL(file);
+        } else {
+          pushMember("");
+        }
+      });
+    });
+
+    panels.querySelectorAll("[data-remove-team-member]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var label = btn.getAttribute("data-team-label");
+        var id = btn.getAttribute("data-remove-team-member");
+        if (state.pmoTeams && Array.isArray(state.pmoTeams[label])) {
+          state.pmoTeams[label] = state.pmoTeams[label].filter(function (m) { return m.id !== id; });
+        }
         renderAll();
         persist();
       });
