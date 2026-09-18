@@ -1358,7 +1358,18 @@
   var CATEGORIES = ["Recursos Humanos", "Material Esportivo", "Divulgação", "Transporte", "Alimentação", "Serviços/Terceiros", "Locação de Espaço", "Administrativo", "Equipamentos", "Outros"];
   var PAYMENTS = ["Boleto", "Transferência", "Pix", "Cartão", "Dinheiro", "Outro"];
   var FORMATOS = ["PJ", "CLT", "TEMPORÁRIO", "BOLSA AUXÍLIO", "MEI", "DIÁRIA/CACHÊ"];
-  var RUBRICAS = ["Festival de Inverno", "Na Atividade", "Circuito Stand Up Paddle", "Conectados", "Vai Bem", "Multi Esporte", "Circuito Social de Corrida", "MULTIPLEQUE O BEM", "CONECTADOS DO BEM"];
+  // As opções de "Rubrica Direcionada" são os nomes de todos os projetos cadastrados
+  // no sistema (ordem alfabética) — se o lançamento já tiver uma rubrica antiga que não
+  // corresponde a nenhum projeto atual (ex.: projeto renomeado/excluído), ela é mantida
+  // na lista para não perder o valor já salvo.
+  function rubricaProjectOptions(currentValue) {
+    var names = state.projects.map(function (p) { return (p.name || "").trim(); }).filter(Boolean);
+    names.sort(function (a, b) { return a.localeCompare(b, "pt-BR"); });
+    if (currentValue && names.indexOf(currentValue) === -1) names.push(currentValue);
+    return names.map(function (r) {
+      return '<option value="' + escapeHtml(r) + '"' + (currentValue === r ? " selected" : "") + ">" + escapeHtml(r) + "</option>";
+    }).join("");
+  }
   var CARGOS = ["Coordenador(a)", "Gerente Geral", "Professor(a)", "Assistente de Produção", "Técnico(a) de Enfermagem", "Estagiário(a)", "Instrutor(a)", "Auxiliar Administrativo(a)", "Motorista", "Segurança", "Nutricionista", "Fisioterapeuta", "Cozinheiro(a)"];
   var MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -2558,7 +2569,7 @@
       "</div>" +
       '<div class="fornecedor-cnpj-row entry-rh-inline">' +
       '<div class="field-inline"><label>Rubrica Direcionada</label><select data-f="rubrica"><option value="">Selecione…</option>' +
-      RUBRICAS.map(function (r) { return '<option value="' + escapeHtml(r) + '"' + (editEntry && editEntry.rubrica === r ? " selected" : "") + ">" + escapeHtml(r) + "</option>"; }).join("") +
+      rubricaProjectOptions(editEntry ? editEntry.rubrica : "") +
       "</select></div>" +
       '<div class="field-inline"><label>Descritivo da Rubrica</label><input type="text" data-f="serviceDescription" placeholder="Descreva o serviço prestado" value="' + escapeHtml(editEntry ? (editEntry.serviceDescription || "") : "") + '" /></div>' +
       '<div class="field-inline"><label>Quantidade na rubrica</label><input type="number" step="1" min="0" data-f="quantity" placeholder="0" value="' + escapeHtml(editEntry && editEntry.quantity != null ? editEntry.quantity : "") + '" /></div>' +
