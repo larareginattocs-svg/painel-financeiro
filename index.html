@@ -3076,6 +3076,7 @@
   }
 
   var saveTimer = null;
+  var ENTRIES_TABLE = "entries"; // Fase 2 — lançamentos vivem numa tabela própria, um registro por linha
 
   function persist() {
     if (canWrite === false) { setSaveStatus("ro"); return; }
@@ -3084,19 +3085,39 @@
     saveTimer = setTimeout(doSave, 350);
   }
 
+  // true = era erro de sessão expirada e já foi tratado (mandou pra tela de login);
+  // false = é outro erro qualquer, quem chamou decide o que fazer (toast, etc.)
+  function handleWriteError(err) {
+    if (err && (err.code === "PGRST301" || /JWT|auth/i.test(err.message || ""))) {
+      canWrite = false;
+      showLoginScreen("Sua sessão expirou. Entre novamente para continuar.");
+      return true;
+    }
+    return false;
+  }
+
+  // O JSON salvo em app_state não carrega mais os lançamentos — eles vivem na
+  // tabela "entries", uma linha por lançamento. Isso evita reescrever tudo a
+  // cada edição pequena e some com o problema de sobrescrita entre usuários.
+  function stateForBlob() {
+    var clone = Object.assign({}, state);
+    clone.projects = (state.projects || []).map(function (p) {
+      var copy = Object.assign({}, p);
+      delete copy.entries;
+      return copy;
+    });
+    return clone;
+  }
+
   async function doSave() {
     saveTimer = null;
     pendingSave = false;
     setSaveStatus("busy");
     try {
-      var payload = { data: state, updated_at: new Date().toISOString(), updated_by: CURRENT_USER ? CURRENT_USER.name : null };
+      var payload = { data: stateForBlob(), updated_at: new Date().toISOString(), updated_by: CURRENT_USER ? CURRENT_USER.name : null };
       var res = await supabase.from("app_state").update(payload).eq("id", 1);
       if (res.error) {
-        if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) {
-          canWrite = false;
-          showLoginScreen("Sua sessão expirou. Entre novamente para continuar.");
-          return;
-        }
+        if (handleWriteError(res.error)) return;
         setSaveStatus("err");
         return;
       }
@@ -3104,6 +3125,67 @@
     } catch (e) {
       setSaveStatus("err");
     }
+  }
+
+  // Salva (cria ou atualiza) UM lançamento — grava só a linha dele, não o app inteiro.
+  async function saveEntryRow(pid, entry) {
+    var res = await supabase.from(ENTRIES_TABLE).upsert({
+      id: entry.id,
+      project_id: pid,
+      entry: entry,
+      updated_at: new Date().toISOString(),
+      updated_by: CURRENT_USER ? CURRENT_USER.name : null
+    });
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  // Mesma coisa, mas pra vários lançamentos de uma vez (ex.: aplicar mês em lote).
+  async function saveEntryRows(pid, entries) {
+    if (!entries || !entries.length) return;
+    var rows = entries.map(function (entry) {
+      return {
+        id: entry.id,
+        project_id: pid,
+        entry: entry,
+        updated_at: new Date().toISOString(),
+        updated_by: CURRENT_USER ? CURRENT_USER.name : null
+      };
+    });
+    var res = await supabase.from(ENTRIES_TABLE).upsert(rows);
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function deleteEntryRow(id) {
+    var res = await supabase.from(ENTRIES_TABLE).delete().eq("id", id);
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  // Busca todos os lançamentos (todas as linhas da tabela "entries") e distribui
+  // cada um dentro do projeto certo — o resto do app continua lendo p.entries
+  // normalmente, como sempre fez.
+  async function loadEntries() {
+    var res = await supabase.from(ENTRIES_TABLE).select("project_id, entry");
+    if (res.error) {
+      if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
+      throw new Error(res.error.message || "Falha ao carregar lançamentos.");
+    }
+    var byProject = {};
+    (res.data || []).forEach(function (row) {
+      if (!byProject[row.project_id]) byProject[row.project_id] = [];
+      byProject[row.project_id].push(row.entry);
+    });
+    (state.projects || []).forEach(function (p) {
+      p.entries = byProject[p.id] || [];
+    });
   }
 
   async function loadState() {
@@ -3114,6 +3196,7 @@
     }
     state = res.data && res.data.data ? res.data.data : { projects: [] };
     normalizeState();
+    await loadEntries();
   }
 
   // ---------------- Toasts ----------------
@@ -3538,6 +3621,7 @@
         var editEntryForAttach = (editing && editing.pid === pid) ? p.entries.find(function (x) { return x.id === editing.eid; }) : null;
         var attachment = getCurrentAttachment(pid, editEntryForAttach);
         var historyLabel = description || (person ? (person + (role ? " — " + role : "")) : category);
+        var entryToSave = null; // o lançamento criado/editado nesta submissão — salvo à parte, na tabela "entries"
         if (editing && editing.pid === pid) {
           var existing = p.entries.find(function (x) { return x.id === editing.eid; });
           if (existing) {
@@ -3557,6 +3641,7 @@
             if (realQuantity != null && !isNaN(realQuantity)) existing.realQuantity = realQuantity; else delete existing.realQuantity;
             if (attachment) existing.attachment = attachment; else delete existing.attachment;
             logHistory(p, "edit", "Lançamento editado: " + historyLabel + " (" + fmtMoney(amount) + ")");
+            entryToSave = existing;
           }
           editing = null;
         } else {
@@ -3576,10 +3661,16 @@
           if (attachment) newEntry.attachment = attachment;
           p.entries.push(newEntry);
           logHistory(p, "add", "Lançamento adicionado: " + historyLabel + " (" + fmtMoney(amount) + ")");
+          entryToSave = newEntry;
         }
         pendingAttachment[pid] = undefined;
         renderAll();
-        persist();
+        persist(); // ainda salva o resto do projeto (histórico etc.) no blob de sempre
+        if (entryToSave) {
+          saveEntryRow(pid, entryToSave).catch(function () {
+            showToast("Não foi possível salvar o lançamento no servidor. Tente novamente.", true);
+          });
+        }
       });
     });
 
@@ -4179,14 +4270,18 @@
         }
         var ids = (btn.getAttribute("data-bulk-ids") || "").split(",").filter(Boolean);
         var count = 0;
+        var changedEntries = [];
         ids.forEach(function (id) {
           var entry = p.entries.find(function (x) { return x.id === id; });
-          if (entry && !entry.refMonth) { entry.refMonth = val; count++; }
+          if (entry && !entry.refMonth) { entry.refMonth = val; changedEntries.push(entry); count++; }
         });
         if (count > 0) {
           logHistory(p, "edit", "Mês de referência preenchido em lote (" + fmtMonth(val) + ") para " + count + (count === 1 ? " lançamento" : " lançamentos"));
           renderAll();
           persist();
+          saveEntryRows(pid, changedEntries).catch(function () {
+            showToast("Não foi possível salvar a alteração em lote no servidor. Tente novamente.", true);
+          });
         }
       });
     });
@@ -4259,6 +4354,11 @@
     }
     renderAll();
     persist();
+    if (kind === "entry") {
+      deleteEntryRow(id).catch(function () {
+        showToast("Não foi possível excluir o lançamento no servidor. Tente novamente.", true);
+      });
+    }
   }
 
   // ---------------- Login / sessão ----------------
