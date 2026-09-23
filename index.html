@@ -2675,6 +2675,7 @@
         '<div class="modal-actions" style="justify-content:flex-start;margin-bottom:16px">' +
         '<button class="btn" type="button" data-save-project-name="' + p.id + '">Salvar</button>' +
         '<button class="btn subtle" type="button" data-cancel-project-name>Cancelar</button>' +
+        '<button class="btn" type="button" style="margin-left:auto;background:var(--danger-soft);color:var(--danger);border-color:var(--danger)" data-del-project="' + p.id + '">Excluir projeto</button>' +
         "</div>";
     } else {
       titleBlockHtml =
@@ -3195,6 +3196,21 @@
     if (res.error) {
       if (handleWriteError(res.error)) return;
       throw res.error;
+    }
+  }
+
+  // Excluir um projeto também leva junto os lançamentos e contrapartidas dele
+  // (senão ficariam linhas "órfãs" nas outras tabelas, apontando pra um
+  // project_id que não existe mais).
+  async function deleteProjectRow(pid) {
+    var res1 = await supabase.from(ENTRIES_TABLE).delete().eq("project_id", pid);
+    if (res1.error && handleWriteError(res1.error)) return;
+    var res2 = await supabase.from(COUNTERPARTS_TABLE).delete().eq("project_id", pid);
+    if (res2.error && handleWriteError(res2.error)) return;
+    var res3 = await supabase.from(PROJECTS_TABLE).delete().eq("id", pid);
+    if (res3.error) {
+      if (handleWriteError(res3.error)) return;
+      throw res3.error;
     }
   }
 
@@ -4257,6 +4273,19 @@
       });
     });
 
+    panels.querySelectorAll("[data-del-project]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var proj = btn.getAttribute("data-del-project");
+        var p = state.projects.find(function (x) { return x.id === proj; });
+        if (!p) return;
+        pendingDelete = { pid: proj, id: proj, kind: "project" };
+        document.getElementById("confirmTitle").textContent = "Excluir projeto";
+        var msg = document.getElementById("confirmMessage");
+        msg.textContent = "Excluir “" + p.name + "”? Todos os lançamentos e contrapartidas desse projeto também serão apagados. Essa ação não pode ser desfeita.";
+        document.getElementById("confirmOverlay").classList.add("open");
+      });
+    });
+
     panels.querySelectorAll("[data-del-supplier]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var sid = btn.getAttribute("data-del-supplier");
@@ -4524,6 +4553,21 @@
     if (!pendingDelete) return;
     var pid = pendingDelete.pid, id = pendingDelete.id, kind = pendingDelete.kind;
     document.getElementById("confirmOverlay").classList.remove("open");
+    if (kind === "project") {
+      pendingDelete = null;
+      state.projects = state.projects.filter(function (x) { return x.id !== id; });
+      if (editingProjectName === id) editingProjectName = null;
+      if (activeTab === id) {
+        activeTab = "resumo";
+        try { sessionStorage.setItem("painel-active-tab", "resumo"); } catch (e) {}
+      }
+      renderAll();
+      persist();
+      deleteProjectRow(id).catch(function () {
+        showToast("Não foi possível excluir o projeto no servidor. Tente novamente.", true);
+      });
+      return;
+    }
     if (kind === "supplier") {
       pendingDelete = null;
       state.suppliers = (state.suppliers || []).filter(function (x) { return x.id !== id; });
