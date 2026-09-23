@@ -3077,6 +3077,10 @@
 
   var saveTimer = null;
   var ENTRIES_TABLE = "entries"; // Fase 2 — lançamentos vivem numa tabela própria, um registro por linha
+  var PROJECTS_TABLE = "projects"; // Fase 3 — projetos, fornecedores, pessoas e contrapartidas também
+  var SUPPLIERS_TABLE = "suppliers"; // ganham tabela própria, um registro por linha
+  var PEOPLE_TABLE = "people";
+  var COUNTERPARTS_TABLE = "counterparts";
 
   function persist() {
     if (canWrite === false) { setSaveStatus("ro"); return; }
@@ -3096,17 +3100,102 @@
     return false;
   }
 
-  // O JSON salvo em app_state não carrega mais os lançamentos — eles vivem na
-  // tabela "entries", uma linha por lançamento. Isso evita reescrever tudo a
-  // cada edição pequena e some com o problema de sobrescrita entre usuários.
+  // Desde a Fase 3, o app_state não carrega mais projetos, lançamentos,
+  // fornecedores, pessoas ou contrapartidas — cada um vive na sua própria
+  // tabela. Sobra só configuração leve e global (que não pertence a nenhum
+  // projeto específico): orçamento por rubrica e fotos/equipe de PMO.
   function stateForBlob() {
-    var clone = Object.assign({}, state);
-    clone.projects = (state.projects || []).map(function (p) {
-      var copy = Object.assign({}, p);
-      delete copy.entries;
-      return copy;
+    return {
+      rubricaBudgets: state.rubricaBudgets || {},
+      pmoPhotos: state.pmoPhotos || {},
+      pmoTeams: state.pmoTeams || {}
+    };
+  }
+
+  // Tira do projeto o que já mora em tabela própria (entries e counterparts)
+  // antes de gravar a linha dele em "projects".
+  function projectForRow(p) {
+    var copy = Object.assign({}, p);
+    delete copy.entries;
+    delete copy.counterparts;
+    return copy;
+  }
+
+  async function saveProjectRow(p) {
+    var res = await supabase.from(PROJECTS_TABLE).upsert({
+      id: p.id,
+      project: projectForRow(p),
+      updated_at: new Date().toISOString(),
+      updated_by: CURRENT_USER ? CURRENT_USER.name : null
     });
-    return clone;
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function saveSupplierRow(s) {
+    var res = await supabase.from(SUPPLIERS_TABLE).upsert({
+      id: s.id,
+      supplier: s,
+      updated_at: new Date().toISOString(),
+      updated_by: CURRENT_USER ? CURRENT_USER.name : null
+    });
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function deleteSupplierRow(id) {
+    var res = await supabase.from(SUPPLIERS_TABLE).delete().eq("id", id);
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function savePersonRow(person) {
+    var res = await supabase.from(PEOPLE_TABLE).upsert({
+      id: person.id,
+      person: person,
+      updated_at: new Date().toISOString(),
+      updated_by: CURRENT_USER ? CURRENT_USER.name : null
+    });
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function deletePersonRow(id) {
+    var res = await supabase.from(PEOPLE_TABLE).delete().eq("id", id);
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function saveCounterpartRow(pid, cp) {
+    var res = await supabase.from(COUNTERPARTS_TABLE).upsert({
+      id: cp.id,
+      project_id: pid,
+      counterpart: cp,
+      updated_at: new Date().toISOString(),
+      updated_by: CURRENT_USER ? CURRENT_USER.name : null
+    });
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function deleteCounterpartRow(id) {
+    var res = await supabase.from(COUNTERPARTS_TABLE).delete().eq("id", id);
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
   }
 
   async function doSave() {
@@ -3188,15 +3277,79 @@
     });
   }
 
+  // Fase 3 — projetos, fornecedores e pessoas vêm cada um da sua própria
+  // tabela (um registro por linha), não mais de dentro do state.projects/etc
+  // que veio no JSON único.
+  async function loadProjects() {
+    var res = await supabase.from(PROJECTS_TABLE).select("id, project");
+    if (res.error) {
+      if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
+      throw new Error(res.error.message || "Falha ao carregar projetos.");
+    }
+    state.projects = (res.data || []).map(function (row) {
+      var p = Object.assign({}, row.project);
+      p.id = row.id;
+      p.entries = [];
+      p.counterparts = [];
+      return p;
+    });
+  }
+
+  async function loadSuppliers() {
+    var res = await supabase.from(SUPPLIERS_TABLE).select("id, supplier");
+    if (res.error) {
+      if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
+      throw new Error(res.error.message || "Falha ao carregar fornecedores.");
+    }
+    state.suppliers = (res.data || []).map(function (row) {
+      var s = Object.assign({}, row.supplier);
+      s.id = row.id;
+      return s;
+    });
+  }
+
+  async function loadPeople() {
+    var res = await supabase.from(PEOPLE_TABLE).select("id, person");
+    if (res.error) {
+      if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
+      throw new Error(res.error.message || "Falha ao carregar pessoas.");
+    }
+    state.people = (res.data || []).map(function (row) {
+      var pe = Object.assign({}, row.person);
+      pe.id = row.id;
+      return pe;
+    });
+  }
+
+  async function loadCounterparts() {
+    var res = await supabase.from(COUNTERPARTS_TABLE).select("id, project_id, counterpart");
+    if (res.error) {
+      if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
+      throw new Error(res.error.message || "Falha ao carregar contrapartidas.");
+    }
+    var byProject = {};
+    (res.data || []).forEach(function (row) {
+      var cp = Object.assign({}, row.counterpart);
+      cp.id = row.id;
+      if (!byProject[row.project_id]) byProject[row.project_id] = [];
+      byProject[row.project_id].push(cp);
+    });
+    (state.projects || []).forEach(function (p) {
+      p.counterparts = byProject[p.id] || [];
+    });
+  }
+
   async function loadState() {
     var res = await supabase.from("app_state").select("data").eq("id", 1).single();
     if (res.error) {
       if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
       throw new Error(res.error.message || "Falha ao carregar dados.");
     }
-    state = res.data && res.data.data ? res.data.data : { projects: [] };
+    var light = res.data && res.data.data ? res.data.data : {};
+    state = { projects: [], suppliers: [], people: [], rubricaBudgets: light.rubricaBudgets, pmoPhotos: light.pmoPhotos, pmoTeams: light.pmoTeams };
+    await loadProjects();
+    await Promise.all([loadSuppliers(), loadPeople(), loadCounterparts(), loadEntries()]);
     normalizeState();
-    await loadEntries();
   }
 
   // ---------------- Toasts ----------------
@@ -3350,6 +3503,9 @@
       try { sessionStorage.setItem("painel-active-tab", id); } catch (e) {}
       renderAll();
       persist();
+      saveProjectRow(newProj).catch(function () {
+        showToast("Não foi possível salvar o projeto no servidor. Tente novamente.", true);
+      });
     });
 
     document.getElementById("cancelDeleteEntry").addEventListener("click", function () {
@@ -3502,6 +3658,9 @@
           logHistory(p, "budget", "Orçamento alterado de " + fmtMoney(oldBudget) + " para " + fmtMoney(newBudget));
           renderAll();
           persist();
+          saveProjectRow(p).catch(function () {
+            showToast("Não foi possível salvar o projeto no servidor. Tente novamente.", true);
+          });
         }
       });
       input.addEventListener("keydown", function (ev) {
@@ -3552,6 +3711,9 @@
         editingProjectName = null;
         renderAll();
         persist();
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o projeto no servidor. Tente novamente.", true);
+        });
       });
     });
 
@@ -3665,12 +3827,15 @@
         }
         pendingAttachment[pid] = undefined;
         renderAll();
-        persist(); // ainda salva o resto do projeto (histórico etc.) no blob de sempre
+        persist();
         if (entryToSave) {
           saveEntryRow(pid, entryToSave).catch(function () {
             showToast("Não foi possível salvar o lançamento no servidor. Tente novamente.", true);
           });
         }
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
       });
     });
 
@@ -3780,21 +3945,33 @@
           setTimeout(function () { form.style.outline = ""; }, 900);
           return;
         }
+        var counterpartToSave = null;
         if (editingCounterpart && editingCounterpart.pid === pid) {
           var existing = p.counterparts.find(function (x) { return x.id === editingCounterpart.cid; });
           if (existing) {
             existing.description = description; existing.dueDate = dueDate; existing.status = status;
             logHistory(p, "edit", "Contrapartida editada: " + description);
+            counterpartToSave = existing;
           }
           editingCounterpart = null;
         } else {
-          p.counterparts.push({ id: "cp" + Date.now() + Math.floor(Math.random() * 1000), description: description, dueDate: dueDate, status: status || "pendente" });
+          var newCounterpart = { id: "cp" + Date.now() + Math.floor(Math.random() * 1000), description: description, dueDate: dueDate, status: status || "pendente" };
+          p.counterparts.push(newCounterpart);
           logHistory(p, "add", "Contrapartida cadastrada: " + description);
+          counterpartToSave = newCounterpart;
         }
         renderAll();
         var details = panels.querySelector('[data-counterparts="' + pid + '"]');
         if (details) details.open = true;
         persist();
+        if (counterpartToSave) {
+          saveCounterpartRow(pid, counterpartToSave).catch(function () {
+            showToast("Não foi possível salvar a contrapartida no servidor. Tente novamente.", true);
+          });
+        }
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
       });
     });
 
@@ -3820,6 +3997,12 @@
         var details = panels.querySelector('[data-counterparts="' + pid + '"]');
         if (details) details.open = true;
         persist();
+        saveCounterpartRow(pid, cp).catch(function () {
+          showToast("Não foi possível salvar a contrapartida no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
       });
     });
 
@@ -4031,21 +4214,29 @@
           return;
         }
         if (!Array.isArray(state.suppliers)) state.suppliers = [];
+        var supplierToSave = null;
         if (editingSupplier) {
           var existing = findSupplierById(editingSupplier);
           if (existing) {
             existing.name = name;
             existing.cnpjNA = cnpjNA;
             if (cnpj) existing.cnpj = cnpj; else delete existing.cnpj;
+            supplierToSave = existing;
           }
           editingSupplier = null;
         } else {
           var newSupplier = { id: "sup" + Date.now() + Math.floor(Math.random() * 1000), name: name, cnpjNA: cnpjNA };
           if (cnpj) newSupplier.cnpj = cnpj;
           state.suppliers.push(newSupplier);
+          supplierToSave = newSupplier;
         }
         renderAll();
         persist();
+        if (supplierToSave) {
+          saveSupplierRow(supplierToSave).catch(function () {
+            showToast("Não foi possível salvar o fornecedor no servidor. Tente novamente.", true);
+          });
+        }
       });
     }
 
@@ -4093,12 +4284,14 @@
           return;
         }
         if (!Array.isArray(state.people)) state.people = [];
+        var personToSave = null;
         if (editingPerson) {
           var existing = findPersonById(editingPerson);
           if (existing) {
             existing.name = name;
             if (role) existing.role = role; else delete existing.role;
             if (formato) existing.formato = formato; else delete existing.formato;
+            personToSave = existing;
           }
           editingPerson = null;
         } else {
@@ -4106,9 +4299,15 @@
           if (role) newPerson.role = role;
           if (formato) newPerson.formato = formato;
           state.people.push(newPerson);
+          personToSave = newPerson;
         }
         renderAll();
         persist();
+        if (personToSave) {
+          savePersonRow(personToSave).catch(function () {
+            showToast("Não foi possível salvar a pessoa no servidor. Tente novamente.", true);
+          });
+        }
       });
     }
 
@@ -4282,6 +4481,9 @@
           saveEntryRows(pid, changedEntries).catch(function () {
             showToast("Não foi possível salvar a alteração em lote no servidor. Tente novamente.", true);
           });
+          saveProjectRow(p).catch(function () {
+            showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+          });
         }
       });
     });
@@ -4328,6 +4530,9 @@
       if (editingSupplier === id) editingSupplier = null;
       renderAll();
       persist();
+      deleteSupplierRow(id).catch(function () {
+        showToast("Não foi possível excluir o fornecedor no servidor. Tente novamente.", true);
+      });
       return;
     }
     if (kind === "person") {
@@ -4336,6 +4541,9 @@
       if (editingPerson === id) editingPerson = null;
       renderAll();
       persist();
+      deletePersonRow(id).catch(function () {
+        showToast("Não foi possível excluir a pessoa no servidor. Tente novamente.", true);
+      });
       return;
     }
     var p = state.projects.find(function (x) { return x.id === pid; });
@@ -4359,6 +4567,14 @@
         showToast("Não foi possível excluir o lançamento no servidor. Tente novamente.", true);
       });
     }
+    if (kind === "counterpart") {
+      deleteCounterpartRow(id).catch(function () {
+        showToast("Não foi possível excluir a contrapartida no servidor. Tente novamente.", true);
+      });
+    }
+    saveProjectRow(p).catch(function () {
+      showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+    });
   }
 
   // ---------------- Login / sessão ----------------
