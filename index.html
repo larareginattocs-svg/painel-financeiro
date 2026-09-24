@@ -1574,6 +1574,7 @@
   var pmoProfileOpen = null; // Fase 5 — label do PMO cujo perfil detalhado está expandido (null = nenhum)
   var profilesLiteCache = null; // Fase 5 — { id, name, cargo, role, email, phone }[] de todo mundo, pro Perfil de PMO mostrar o cargo/contato
   var pmoSearchQuery = ""; // Fase 6 — filtro por nome na lista de PMOs
+  var pmoPortfolio = {}; // Fase 7 — { project_id: {name, pmoResponsavel, responsibleCompany, incentiveLaw, budget, spent, pcDeadline, deadline, cpAlerts} } de TODOS os projetos (visão consolidada só-leitura, via pmo_portfolio())
 
   function sanitizeFileName(name) {
     var base = (name || "arquivo").normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -2454,6 +2455,40 @@
 
   // Agrupa os projetos por PMO responsável (ou "Sem PMO definido" quando o
   // campo não foi preenchido) e soma orçamento/gasto/alertas de prazo de cada grupo.
+  // Fase 7 — junta os projetos que essa conta tem acesso completo (com
+  // lançamentos, contrapartidas, artefatos — vem de state.projects) com os
+  // projetos que ela só enxerga de forma consolidada via pmo_portfolio()
+  // (marcados com __readOnly: true — sem lançamentos/contrapartidas/artefatos
+  // de verdade, só os números agregados). Pro admin, pmoPortfolio não traz
+  // nada de novo (ele já vê tudo via state.projects).
+  function pmoDisplayProjects() {
+    var own = state.projects || [];
+    var ownIds = {};
+    own.forEach(function (p) { ownIds[p.id] = true; });
+    var extra = [];
+    Object.keys(pmoPortfolio || {}).forEach(function (pid) {
+      if (ownIds[pid]) return;
+      var row = pmoPortfolio[pid];
+      extra.push({
+        id: pid,
+        name: row.name,
+        pmoResponsavel: row.pmoResponsavel,
+        responsibleCompany: row.responsibleCompany,
+        incentiveLaw: row.incentiveLaw,
+        salesResponsavel: row.salesResponsavel,
+        budget: row.budget,
+        pcDeadline: row.pcDeadline,
+        deadline: row.deadline,
+        entries: [{ amount: row.spent }], // truque: projectTotals() já soma p.entries[].amount, sem precisar duplicar a lógica
+        counterparts: [],
+        artifacts: [],
+        __readOnly: true,
+        __cpAlerts: row.cpAlerts
+      });
+    });
+    return own.concat(extra);
+  }
+
   function pmoGroups() {
     var groups = {};
     // Sempre mostra os PMOs conhecidos (lista fixa) e os que já têm equipe cadastrada,
@@ -2464,7 +2499,7 @@
     Object.keys(state.pmoTeams || {}).forEach(function (name) {
       if ((state.pmoTeams[name] || []).length && !groups[name]) groups[name] = { label: name, projects: [] };
     });
-    state.projects.forEach(function (p) {
+    pmoDisplayProjects().forEach(function (p) {
       var label = (p.pmoResponsavel || "").trim() || "Sem PMO definido";
       if (!groups[label]) groups[label] = { label: label, projects: [] };
       groups[label].projects.push(p);
@@ -2483,7 +2518,7 @@
         spent += t.spent;
         var pci = pcDeadlineInfo(p);
         if (pci && pci.status !== "ok") pcAlerts++;
-        cpAlerts += pendingCounterpartAlerts(p);
+        cpAlerts += p.__readOnly ? (p.__cpAlerts || 0) : pendingCounterpartAlerts(p);
       });
       var bs = budgetStatus(spent, budget);
       return { label: g.label, projects: g.projects, budget: budget, spent: spent, pct: bs.pct, status: bs.status, pcAlerts: pcAlerts, cpAlerts: cpAlerts };
@@ -2614,9 +2649,11 @@
         var pci = pcDeadlineInfo(p);
         var pcText = pci ? fmtDate(pci.date) : "—";
         var pcCls = pci ? pci.status : "";
+        var readOnlyAttrs = p.__readOnly ? "" : (' data-goto-project="' + p.id + '" style="cursor:pointer"');
+        var readOnlyBadge = p.__readOnly ? ' <span class="pill neutral" title="Você não tem acesso direto a este projeto — número consolidado apenas">somente leitura</span>' : "";
         return (
-          '<tr class="project-row" data-goto-project="' + p.id + '" style="cursor:pointer">' +
-          '<td data-label="Projeto"><span class="cell-label">Projeto</span>' + escapeHtml(p.name) + "</td>" +
+          '<tr class="project-row"' + readOnlyAttrs + '>' +
+          '<td data-label="Projeto"><span class="cell-label">Projeto</span>' + escapeHtml(p.name) + readOnlyBadge + "</td>" +
           '<td data-label="Empresa responsável"><span class="cell-label">Empresa responsável</span>' + escapeHtml(p.responsibleCompany || "—") + "</td>" +
           '<td data-label="Lei do projeto"><span class="cell-label">Lei do projeto</span>' + escapeHtml(p.incentiveLaw || "—") + "</td>" +
           '<td data-label="Responsável pela venda"><span class="cell-label">Responsável pela venda</span>' + escapeHtml(p.salesResponsavel || "—") + "</td>" +
@@ -3858,6 +3895,36 @@
     });
   }
 
+  // Fase 7 — números consolidados (leitura) de TODOS os projetos, mesmo os
+  // que essa conta não tem acesso direto — usado só pro Painel de PMOs mostrar
+  // a comparação completa. Se a função ainda não existir no banco (SQL da
+  // Fase 7 não rodado ainda), falha em silêncio e o painel volta a mostrar só
+  // os projetos que a conta já enxerga normalmente (comportamento anterior).
+  async function loadPmoPortfolio() {
+    try {
+      var res = await supabase.rpc("pmo_portfolio");
+      if (res.error) { pmoPortfolio = {}; return; }
+      var map = {};
+      (res.data || []).forEach(function (row) {
+        map[row.project_id] = {
+          name: row.name,
+          pmoResponsavel: row.pmo_responsavel,
+          responsibleCompany: row.responsible_company,
+          incentiveLaw: row.incentive_law,
+          salesResponsavel: row.sales_responsavel,
+          budget: Number(row.budget) || 0,
+          spent: Number(row.spent) || 0,
+          pcDeadline: row.pc_deadline,
+          deadline: row.deadline,
+          cpAlerts: Number(row.cp_alerts) || 0
+        };
+      });
+      pmoPortfolio = map;
+    } catch (e) {
+      pmoPortfolio = {};
+    }
+  }
+
   async function loadState() {
     var res = await supabase.from("app_state").select("data").eq("id", 1).single();
     if (res.error) {
@@ -3867,7 +3934,7 @@
     var light = res.data && res.data.data ? res.data.data : {};
     state = { projects: [], suppliers: [], people: [], rubricaBudgets: light.rubricaBudgets, pmoPhotos: light.pmoPhotos, pmoTeams: light.pmoTeams };
     await loadProjects();
-    await Promise.all([loadSuppliers(), loadPeople(), loadCounterparts(), loadEntries(), loadArtifacts()]);
+    await Promise.all([loadSuppliers(), loadPeople(), loadCounterparts(), loadEntries(), loadArtifacts(), loadPmoPortfolio()]);
     normalizeState();
   }
 
@@ -5430,6 +5497,7 @@
           usersCache = null;
           profilesLiteCache = null;
           pmoProfileOpen = null;
+          pmoPortfolio = {};
           state = { projects: [] };
           showLoginScreen();
         });
