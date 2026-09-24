@@ -1193,6 +1193,16 @@
   .uf-project-chip { font-size: 13px; display: flex; align-items: center; gap: 5px; }
   .muted-sub { font-size: 12px; color: var(--ink-faint); }
   .muted { color: var(--ink-faint); font-size: 13px; }
+
+  /* Fase 5 — Perfil de PMO e artefatos */
+  .pmo-group-name-btn { background: none; border: none; padding: 0; font: inherit; cursor: pointer; text-align: left; }
+  .pmo-profile-card { background: var(--panel-soft, rgba(0,0,0,0.03)); border-radius: 10px; padding: 14px 16px; margin: 10px 0; }
+  .pmo-profile-grid { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 10px; }
+  .pmo-profile-field { margin-bottom: 10px; min-width: 200px; }
+  .pmo-profile-projects-list, .pmo-profile-artifacts-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .pmo-profile-project-row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .pmo-profile-project-artifacts { margin-bottom: 6px; }
+  .pmo-profile-artifact { display: flex; justify-content: space-between; gap: 10px; padding-left: 10px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -1442,6 +1452,7 @@
       if (!Array.isArray(p.installments)) p.installments = [];
       if (!Array.isArray(p.history)) p.history = [];
       if (!Array.isArray(p.counterparts)) p.counterparts = [];
+      if (!Array.isArray(p.artifacts)) p.artifacts = [];
     });
     if (!Array.isArray(state.suppliers)) state.suppliers = [];
     if (!Array.isArray(state.people)) state.people = [];
@@ -1477,13 +1488,17 @@
   var editingRubricaBudget = null; // rubrica key whose "orçamento previsto" field is currently open for editing
   var editingUserId = null; // Fase 4 — uid do usuário sendo editado na aba Usuários (null = formulário de "novo")
   var usersCache = null; // Fase 4 — lista de { id, name, cargo, role, projectIds }, carregada sob demanda (só admin)
-  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "counterpart" | "supplier" | "person" | "project" | "user" — awaiting confirm in the delete modal
+  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "counterpart" | "supplier" | "person" | "project" | "user" | "artifact" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,path,type} (new file staged & already uploaded to Storage), {name,dataUrl} (legacy, pre-migração), null (explicit removal), or undefined (no change)
   var attachmentUploading = {}; // pid -> true while a file is mid-upload to Storage
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
   var MAX_PMO_PHOTO_BYTES = 2 * 1024 * 1024; // 2MB — foto de perfil do PMO
   var ATTACH_BUCKET = "comprovantes"; // bucket privado — precisa de URL assinada pra visualizar
   var PMO_PHOTO_BUCKET = "pmo-photos"; // bucket público — fotos de perfil/equipe
+  var ARTIFACT_BUCKET = "artefatos"; // Fase 5 — bucket privado, arquivos do projeto (não são comprovantes de gasto)
+  var MAX_ARTIFACT_BYTES = 10 * 1024 * 1024; // 10MB por arquivo
+  var pmoProfileOpen = null; // Fase 5 — label do PMO cujo perfil detalhado está expandido (null = nenhum)
+  var profilesLiteCache = null; // Fase 5 — { id, name, cargo, role }[] de todo mundo, pro Perfil de PMO mostrar o cargo
 
   function sanitizeFileName(name) {
     var base = (name || "arquivo").normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -2504,6 +2519,8 @@
         return (
           '<tr class="project-row" data-goto-project="' + p.id + '" style="cursor:pointer">' +
           '<td data-label="Projeto"><span class="cell-label">Projeto</span>' + escapeHtml(p.name) + "</td>" +
+          '<td data-label="Empresa responsável"><span class="cell-label">Empresa responsável</span>' + escapeHtml(p.responsibleCompany || "—") + "</td>" +
+          '<td data-label="Lei do projeto"><span class="cell-label">Lei do projeto</span>' + escapeHtml(p.incentiveLaw || "—") + "</td>" +
           '<td data-label="Responsável pela venda"><span class="cell-label">Responsável pela venda</span>' + escapeHtml(p.salesResponsavel || "—") + "</td>" +
           '<td class="val num" data-label="Orçamento"><span class="cell-label">Orçamento</span>' + fmtMoney(t.budget) + "</td>" +
           '<td class="val num" data-label="Gasto"><span class="cell-label">Gasto</span>' + fmtMoney(t.spent) + "</td>" +
@@ -2523,15 +2540,59 @@
 
       var tableHtml = rows
         ? '<div class="table-wrap pmo-projects-table-wrap"><table class="pmo-projects-table"><thead><tr>' +
-          "<th>Projeto</th><th>Responsável pela venda</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Execução</th><th>Status</th><th>Prazo prestação de contas</th>" +
+          "<th>Projeto</th><th>Empresa responsável</th><th>Lei do projeto</th><th>Responsável pela venda</th><th class=\"val\">Orçamento</th><th class=\"val\">Gasto</th><th class=\"val\">Execução</th><th>Status</th><th>Prazo prestação de contas</th>" +
           "</tr></thead><tbody>" + rows + "</tbody></table></div>"
         : '<div class="empty-state"><span class="empty-ico">📁</span><span>Nenhum projeto direcionado a este PMO ainda.</span></div>';
+
+      var isOpenProfile = pmoProfileOpen === g.label;
+      var profileHtml = "";
+      if (g.label !== "Sem PMO definido" && isOpenProfile) {
+        if (profilesLiteCache === null) {
+          loadProfilesLite().then(function (list) {
+            profilesLiteCache = list;
+            renderAll();
+          }).catch(function () { profilesLiteCache = []; });
+        }
+        var matchedProfile = findProfileByName(g.label);
+        var cargoLine = profilesLiteCache === null
+          ? "Carregando…"
+          : (matchedProfile ? (matchedProfile.cargo || "Cargo não informado") : "Sem cadastro de usuário vinculado a este nome.");
+        var artifactsByProject = g.projects.map(function (p) {
+          var arts = (p.artifacts || []);
+          if (!arts.length) return "";
+          var items = arts.map(function (a) {
+            return '<div class="pmo-profile-artifact"><span>' + escapeHtml(a.name) + "</span><span class=\"muted-sub\">" + fmtFileSize(a.size) + "</span></div>";
+          }).join("");
+          return '<div class="pmo-profile-project-artifacts"><div class="muted-sub"><strong>' + escapeHtml(p.name) + "</strong></div>" + items + "</div>";
+        }).join("");
+        profileHtml =
+          '<div class="pmo-profile-card">' +
+          '<div class="section-title-row"><div class="section-title">Perfil de ' + escapeHtml(g.label) + "</div></div>" +
+          '<div class="pmo-profile-grid">' +
+          '<div class="pmo-profile-field"><span class="muted-sub">Cargo</span><div>' + escapeHtml(cargoLine) + "</div></div>" +
+          '<div class="pmo-profile-field"><span class="muted-sub">Projetos vinculados</span><div>' + g.projects.length + (g.projects.length === 1 ? " projeto" : " projetos") + "</div></div>" +
+          "</div>" +
+          '<div class="pmo-profile-field"><span class="muted-sub">Projetos e empresas/leis</span><div class="pmo-profile-projects-list">' +
+          (g.projects.length
+            ? g.projects.map(function (p) {
+                return '<div class="pmo-profile-project-row"><strong>' + escapeHtml(p.name) + '</strong><span class="muted-sub">' + escapeHtml(p.responsibleCompany || "—") + " · " + escapeHtml(p.incentiveLaw || "—") + "</span></div>";
+              }).join("")
+            : '<span class="muted">Nenhum projeto vinculado ainda.</span>') +
+          "</div></div>" +
+          '<div class="pmo-profile-field"><span class="muted-sub">Artefatos dos projetos</span><div class="pmo-profile-artifacts-list">' +
+          (artifactsByProject || '<span class="muted">Nenhum artefato enviado nos projetos deste PMO ainda.</span>') +
+          "</div></div>" +
+          "</div>";
+      }
 
       return (
         '<div class="form-card pmo-group">' +
         '<div class="pmo-group-head">' +
         '<div class="pmo-group-title">' +
-        '<div class="pmo-group-title-left">' + pmoAvatarImgHtml(g.label, 44) + '<span class="pmo-group-name">' + escapeHtml(g.label) + "</span>" +
+        '<div class="pmo-group-title-left">' + pmoAvatarImgHtml(g.label, 44) +
+        (g.label !== "Sem PMO definido"
+          ? '<button type="button" class="pmo-group-name pmo-group-name-btn" data-toggle-pmo-profile="' + escapeHtml(g.label) + '">' + escapeHtml(g.label) + (isOpenProfile ? " ▲" : " ▾") + "</button>"
+          : '<span class="pmo-group-name">' + escapeHtml(g.label) + "</span>") +
         (g.label !== "Sem PMO definido" ? pmoAvatarActionsHtml(g.label) : "") +
         "</div>" +
         '<span class="summary-total">' + g.projects.length + (g.projects.length === 1 ? " projeto" : " projetos") + "</span></div>" +
@@ -2539,6 +2600,7 @@
         '<div class="compare-card-figures"><span>' + fmtMoney(g.spent) + " de " + fmtMoney(g.budget) + '</span><span class="compare-card-pct">' + fmtPct(g.pct) + "</span></div>" +
         "</div>" +
         (g.label !== "Sem PMO definido" ? renderPmoTeamHtml(g.label) : "") +
+        profileHtml +
         alertHtml +
         tableHtml +
         "</div>"
@@ -2881,9 +2943,52 @@
       "</tr></thead><tbody data-entries-body=\"" + p.id + "\">" + rows + "</tbody></table></div>" +
 
       renderCounterpartsSection(p) +
+      renderArtifactsSection(p) +
       renderProjectRubricaExecutionSection(p) +
       renderHistorySection(p) +
       "</div>"
+    );
+  }
+
+  function fmtFileSize(bytes) {
+    var n = Number(bytes) || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  // Fase 5 — arquivos vinculados ao projeto (contratos, relatórios etc.),
+  // separados dos comprovantes de gasto. Visíveis a quem tem acesso ao
+  // projeto; envio liberado pra todo mundo, exclusão bloqueada pra estagiário.
+  function renderArtifactsSection(p) {
+    var list = (p.artifacts || []).slice().sort(function (a, b) { return (b.createdAt || "").localeCompare(a.createdAt || ""); });
+    var rows = "";
+    if (list.length === 0) {
+      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">📎</span><span>Nenhum artefato enviado ainda.</span></div></td></tr>';
+    } else {
+      list.forEach(function (a) {
+        rows += "<tr>";
+        rows += '<td class="wrap">' + escapeHtml(a.name) + "</td>";
+        rows += "<td>" + fmtFileSize(a.size) + "</td>";
+        rows += "<td>" + escapeHtml(a.uploadedByName || "—") + (a.createdAt ? '<div class="muted-sub">' + fmtDateTime(a.createdAt) + "</div>" : "") + "</td>";
+        rows += '<td><div class="row-actions">' +
+          '<button class="row-edit" type="button" data-download-artifact="' + a.id + '" data-proj="' + p.id + '" title="Baixar">⬇</button>' +
+          (isLimitedRole() ? "" : '<button class="row-del" type="button" data-del-artifact="' + a.id + '" data-proj="' + p.id + '" title="Excluir artefato">✕</button>') +
+          "</div></td>";
+        rows += "</tr>";
+      });
+    }
+    return (
+      '<details class="section-card" data-artifacts="' + p.id + '">' +
+      '<summary>Artefatos do projeto <span class="summary-total">' + list.length + (list.length === 1 ? " arquivo" : " arquivos") + '</span><span class="chev">▶</span></summary>' +
+      '<div class="installment-form" data-artifact-form="' + p.id + '">' +
+      '<label class="btn subtle" style="cursor:pointer">📎 Enviar arquivo<input type="file" data-artifact-input="' + p.id + '" hidden /></label>' +
+      '<span class="form-hint" data-artifact-error="' + p.id + '"></span>' +
+      "</div>" +
+      '<div class="table-wrap"><table><thead><tr>' +
+      "<th>Arquivo</th><th>Tamanho</th><th>Enviado por</th><th>Ações</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "</details>"
     );
   }
 
@@ -3182,6 +3287,7 @@
   var COUNTERPARTS_TABLE = "counterparts";
   var USER_PROFILES_TABLE = "user_profiles"; // Fase 4 — contas individuais e controle de acesso
   var USER_PROJECTS_TABLE = "user_projects";
+  var ARTIFACTS_TABLE = "project_artifacts"; // Fase 5 — arquivos do projeto (contratos, relatórios etc.)
 
   function persist() {
     if (canWrite === false) { setSaveStatus("ro"); return; }
@@ -3299,19 +3405,86 @@
     }
   }
 
-  // Excluir um projeto também leva junto os lançamentos e contrapartidas dele
-  // (senão ficariam linhas "órfãs" nas outras tabelas, apontando pra um
-  // project_id que não existe mais).
+  // Excluir um projeto também leva junto os lançamentos, contrapartidas e
+  // artefatos dele (senão ficariam linhas "órfãs" nas outras tabelas,
+  // apontando pra um project_id que não existe mais).
   async function deleteProjectRow(pid) {
     var res1 = await supabase.from(ENTRIES_TABLE).delete().eq("project_id", pid);
     if (res1.error && handleWriteError(res1.error)) return;
     var res2 = await supabase.from(COUNTERPARTS_TABLE).delete().eq("project_id", pid);
     if (res2.error && handleWriteError(res2.error)) return;
+    var res4 = await supabase.from(ARTIFACTS_TABLE).delete().eq("project_id", pid);
+    if (res4.error && handleWriteError(res4.error)) return;
     var res3 = await supabase.from(PROJECTS_TABLE).delete().eq("id", pid);
     if (res3.error) {
       if (handleWriteError(res3.error)) return;
       throw res3.error;
     }
+  }
+
+  // ---------------- Fase 5 — artefatos do projeto ----------------
+
+  async function saveArtifactRow(pid, artifact) {
+    var res = await supabase.from(ARTIFACTS_TABLE).insert({
+      id: artifact.id,
+      project_id: pid,
+      name: artifact.name,
+      path: artifact.path,
+      size: artifact.size || null,
+      uploaded_by: CURRENT_USER ? CURRENT_USER.id : null,
+      uploaded_by_name: CURRENT_PROFILE ? CURRENT_PROFILE.name : (CURRENT_USER ? CURRENT_USER.email : null)
+    });
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function deleteArtifactRow(id) {
+    var res = await supabase.from(ARTIFACTS_TABLE).delete().eq("id", id);
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function loadArtifacts() {
+    var res = await supabase.from(ARTIFACTS_TABLE).select("id, project_id, name, path, size, uploaded_by_name, created_at").order("created_at");
+    if (res.error) {
+      if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
+      throw new Error(res.error.message || "Falha ao carregar artefatos.");
+    }
+    var byProject = {};
+    (res.data || []).forEach(function (row) {
+      if (!byProject[row.project_id]) byProject[row.project_id] = [];
+      byProject[row.project_id].push({
+        id: row.id,
+        name: row.name,
+        path: row.path,
+        size: row.size,
+        uploadedByName: row.uploaded_by_name,
+        createdAt: row.created_at
+      });
+    });
+    (state.projects || []).forEach(function (p) {
+      p.artifacts = byProject[p.id] || [];
+    });
+  }
+
+  // Cadastro (nome/cargo) de todo mundo que já teve acesso dado ao sistema —
+  // usado só pro Perfil de PMO mostrar o cargo de quem não é o usuário logado.
+  // Se a pessoa ainda não tem login cadastrado, o Perfil simplesmente não
+  // mostra cargo (mas os projetos vinculados a ela por nome continuam aparecendo).
+  async function loadProfilesLite() {
+    var res = await supabase.from(USER_PROFILES_TABLE).select("id, name, cargo, role").order("name");
+    if (res.error) throw res.error;
+    return res.data || [];
+  }
+
+  function findProfileByName(name) {
+    var key = String(name || "").trim().toLowerCase();
+    if (!key || !profilesLiteCache) return null;
+    return profilesLiteCache.find(function (u) { return (u.name || "").trim().toLowerCase() === key; }) || null;
   }
 
   // ---------------- Fase 4 — usuários e acesso por projeto ----------------
@@ -3455,6 +3628,7 @@
       p.id = row.id;
       p.entries = [];
       p.counterparts = [];
+      p.artifacts = [];
       return p;
     });
   }
@@ -3512,7 +3686,7 @@
     var light = res.data && res.data.data ? res.data.data : {};
     state = { projects: [], suppliers: [], people: [], rubricaBudgets: light.rubricaBudgets, pmoPhotos: light.pmoPhotos, pmoTeams: light.pmoTeams };
     await loadProjects();
-    await Promise.all([loadSuppliers(), loadPeople(), loadCounterparts(), loadEntries()]);
+    await Promise.all([loadSuppliers(), loadPeople(), loadCounterparts(), loadEntries(), loadArtifacts()]);
     normalizeState();
   }
 
@@ -4189,6 +4363,14 @@
       });
     });
 
+    panels.querySelectorAll("[data-toggle-pmo-profile]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var label = btn.getAttribute("data-toggle-pmo-profile");
+        pmoProfileOpen = pmoProfileOpen === label ? null : label;
+        renderAll();
+      });
+    });
+
     panels.querySelectorAll("[data-pmo-photo-input]").forEach(function (input) {
       input.addEventListener("change", function () {
         var label = input.getAttribute("data-pmo-photo-input");
@@ -4637,6 +4819,75 @@
       });
     });
 
+    container.querySelectorAll("[data-artifact-input]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var pid = input.getAttribute("data-artifact-input");
+        var errEl = container.querySelector('[data-artifact-error="' + pid + '"]');
+        if (errEl) errEl.textContent = "";
+        var file = input.files && input.files[0];
+        if (!file) return;
+        if (file.size > MAX_ARTIFACT_BYTES) {
+          if (errEl) errEl.textContent = "Arquivo muito grande (máx. 10MB).";
+          input.value = "";
+          return;
+        }
+        input.disabled = true;
+        if (errEl) errEl.textContent = "Enviando…";
+        uploadToBucket(ARTIFACT_BUCKET, pid, file).then(function (path) {
+          var artifact = { id: "art" + Date.now() + Math.floor(Math.random() * 1000), name: file.name, path: path, size: file.size, uploadedByName: CURRENT_PROFILE ? CURRENT_PROFILE.name : "", createdAt: new Date().toISOString() };
+          var p = state.projects.find(function (x) { return x.id === pid; });
+          if (p) {
+            if (!Array.isArray(p.artifacts)) p.artifacts = [];
+            p.artifacts.push(artifact);
+          }
+          input.disabled = false;
+          input.value = "";
+          if (errEl) errEl.textContent = "";
+          renderAll();
+          saveArtifactRow(pid, artifact).catch(function () {
+            showToast("Não foi possível salvar o artefato no servidor. Tente novamente.", true);
+          });
+        }).catch(function () {
+          input.disabled = false;
+          input.value = "";
+          if (errEl) errEl.textContent = "Não foi possível enviar o arquivo. Tente novamente.";
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-download-artifact]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var aid = btn.getAttribute("data-download-artifact");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var artifact = p && (p.artifacts || []).find(function (x) { return x.id === aid; });
+        if (!artifact) return;
+        btn.disabled = true;
+        signedUrlFor(ARTIFACT_BUCKET, artifact.path, 3600).then(function (url) {
+          btn.disabled = false;
+          window.open(url, "_blank");
+        }).catch(function () {
+          btn.disabled = false;
+          alert("Não foi possível baixar o arquivo agora. Tente novamente.");
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-del-artifact]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var aid = btn.getAttribute("data-del-artifact");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var artifact = p && (p.artifacts || []).find(function (x) { return x.id === aid; });
+        if (!artifact) return;
+        pendingDelete = { pid: pid, id: aid, kind: "artifact" };
+        document.getElementById("confirmTitle").textContent = "Excluir artefato";
+        var msg = document.getElementById("confirmMessage");
+        msg.textContent = "Excluir “" + artifact.name + "”? Essa ação não pode ser desfeita.";
+        document.getElementById("confirmOverlay").classList.add("open");
+      });
+    });
+
     container.querySelectorAll("[data-toggle-attach]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var pid = btn.getAttribute("data-proj");
@@ -4812,6 +5063,18 @@
       });
       return;
     }
+    if (kind === "artifact") {
+      pendingDelete = null;
+      var projA = state.projects.find(function (x) { return x.id === pid; });
+      var artifactToRemove = projA && (projA.artifacts || []).find(function (x) { return x.id === id; });
+      if (projA) projA.artifacts = (projA.artifacts || []).filter(function (x) { return x.id !== id; });
+      renderAll();
+      if (artifactToRemove) removeFromBucketBestEffort(ARTIFACT_BUCKET, artifactToRemove.path);
+      deleteArtifactRow(id).catch(function () {
+        showToast("Não foi possível excluir o artefato no servidor. Tente novamente.", true);
+      });
+      return;
+    }
     var p = state.projects.find(function (x) { return x.id === pid; });
     pendingDelete = null;
     if (!p) return;
@@ -4956,6 +5219,8 @@
           CURRENT_USER = null;
           CURRENT_PROFILE = null;
           usersCache = null;
+          profilesLiteCache = null;
+          pmoProfileOpen = null;
           state = { projects: [] };
           showLoginScreen();
         });
