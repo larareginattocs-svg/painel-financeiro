@@ -1186,6 +1186,13 @@
     table.pr-table tr { break-inside: avoid; }
     .pr-info-card, .pr-stats-grid, .pr-signature { break-inside: avoid; }
   }
+
+  /* Fase 4 — tela de Usuários */
+  .form-hint { font-size: 13px; color: var(--ink-faint); margin: 0 0 12px; }
+  .uf-projects-grid { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+  .uf-project-chip { font-size: 13px; display: flex; align-items: center; gap: 5px; }
+  .muted-sub { font-size: 12px; color: var(--ink-faint); }
+  .muted { color: var(--ink-faint); font-size: 13px; }
 </style>
 </head>
 <body>
@@ -1468,7 +1475,9 @@
   var editingPerson = null; // id of person currently open in the recursos-humanos form
   var editingProjectName = null; // id of project whose name field is currently open for editing
   var editingRubricaBudget = null; // rubrica key whose "orçamento previsto" field is currently open for editing
-  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "counterpart" | "supplier" | "person" — awaiting confirm in the delete modal
+  var editingUserId = null; // Fase 4 — uid do usuário sendo editado na aba Usuários (null = formulário de "novo")
+  var usersCache = null; // Fase 4 — lista de { id, name, cargo, role, projectIds }, carregada sob demanda (só admin)
+  var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "counterpart" | "supplier" | "person" | "project" | "user" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,path,type} (new file staged & already uploaded to Storage), {name,dataUrl} (legacy, pre-migração), null (explicit removal), or undefined (no change)
   var attachmentUploading = {}; // pid -> true while a file is mid-upload to Storage
   var MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB — keeps the saved data from ballooning
@@ -1511,7 +1520,10 @@
   var filterState = {}; // pid -> { text, category, payment, from, to } — view-local, not persisted
   var canWrite = null; // null = unknown yet, true/false once resolved
   var pendingSave = false;
-  var CURRENT_USER = null; // { username, name } — set after login
+  var CURRENT_USER = null; // { id, email, name } — set after login
+  var CURRENT_PROFILE = null; // { id, name, cargo, role } — carregado da tabela user_profiles após login (Fase 4)
+  function isAdmin() { return !!(CURRENT_PROFILE && CURRENT_PROFILE.role === "admin"); }
+  function isLimitedRole() { return !!(CURRENT_PROFILE && CURRENT_PROFILE.role === "limited"); }
 
   function fmtMoney(n) {
     n = Number(n) || 0;
@@ -1782,11 +1794,12 @@
     html += tabButton("fornecedores", "Fornecedores", null, "🏷️");
     html += tabButton("pessoas", "Recursos Humanos", null, "🧑‍💼");
     html += tabButton("pmos", "Painel de PMOs", null, "🧭");
+    if (isAdmin()) html += tabButton("usuarios", "Usuários", null, "🔐");
     state.projects.forEach(function (p) {
       var t = projectTotals(p);
       html += tabButton(p.id, p.name, t.status, "📁");
     });
-    html += '<button class="tab tab-add" id="btnAddProject" type="button" title="Novo projeto"><span class="tab-ico">+</span><span class="tab-label">Novo projeto</span></button>';
+    if (isAdmin()) html += '<button class="tab tab-add" id="btnAddProject" type="button" title="Novo projeto"><span class="tab-ico">+</span><span class="tab-label">Novo projeto</span></button>';
     document.getElementById("tabs").innerHTML = html;
   }
   function tabButton(id, label, status, icon) {
@@ -1802,6 +1815,7 @@
     html += renderFornecedoresPanel();
     html += renderPessoasPanel();
     html += renderPmoPanel();
+    if (isAdmin()) html += renderUsuariosPanel();
     state.projects.forEach(function (p) { html += renderProjectPanel(p); });
     document.getElementById("panels").innerHTML = html;
   }
@@ -2183,16 +2197,17 @@
         return "<tr" + (editingSupplier === s.id ? ' class="editing-row"' : "") + ">" +
           "<td>" + escapeHtml(s.name) + "</td>" +
           "<td>" + cnpjText + "</td>" +
-          '<td><div class="row-actions">' +
+          (isLimitedRole() ? "<td></td>" : ('<td><div class="row-actions">' +
           '<button class="row-edit" data-edit-supplier="' + s.id + '" title="Editar fornecedor">✎</button>' +
           '<button class="row-del" data-del-supplier="' + s.id + '" title="Excluir fornecedor">✕</button>' +
-          "</div></td>" +
+          "</div></td>")) +
           "</tr>";
       }).join("");
     }
 
     return (
       '<div class="' + cls + '" data-panel="fornecedores">' +
+      (isLimitedRole() ? "" :
       '<div class="form-card' + (editSupplier ? " editing" : "") + '">' +
       "<h3>Cadastrar fornecedor" + (editSupplier ? '<span class="edit-flag">Editando fornecedor</span>' : "") + "</h3>" +
       '<div data-supplier-form>' +
@@ -2210,7 +2225,7 @@
       '<button class="btn" type="button" data-submit-supplier>' + (editSupplier ? "Salvar alterações" : "Adicionar fornecedor") + "</button>" +
       "</div>" +
       "</div>" +
-      "</div>" +
+      "</div>") +
 
       '<div class="section-title-row"><div class="section-title">Fornecedores cadastrados</div></div>' +
       '<div class="table-wrap"><table><thead><tr>' +
@@ -2234,16 +2249,17 @@
           "<td>" + escapeHtml(s.name) + "</td>" +
           "<td>" + escapeHtml(s.role || "—") + "</td>" +
           "<td>" + escapeHtml(s.formato || "—") + "</td>" +
-          '<td><div class="row-actions">' +
+          (isLimitedRole() ? "<td></td>" : ('<td><div class="row-actions">' +
           '<button class="row-edit" data-edit-person="' + s.id + '" title="Editar pessoa">✎</button>' +
           '<button class="row-del" data-del-person="' + s.id + '" title="Excluir pessoa">✕</button>' +
-          "</div></td>" +
+          "</div></td>")) +
           "</tr>";
       }).join("");
     }
 
     return (
       '<div class="' + cls + '" data-panel="pessoas">' +
+      (isLimitedRole() ? "" :
       '<div class="form-card' + (editPerson ? " editing" : "") + '">' +
       "<h3>Cadastrar pessoa" + (editPerson ? '<span class="edit-flag">Editando pessoa</span>' : "") + "</h3>" +
       '<div data-person-form>' +
@@ -2261,7 +2277,7 @@
       '<button class="btn" type="button" data-submit-person>' + (editPerson ? "Salvar alterações" : "Adicionar pessoa") + "</button>" +
       "</div>" +
       "</div>" +
-      "</div>" +
+      "</div>") +
 
       '<div class="section-title-row"><div class="section-title">Pessoas cadastradas</div></div>' +
       '<div class="table-wrap"><table><thead><tr>' +
@@ -2368,6 +2384,85 @@
       var bs = budgetStatus(spent, budget);
       return { label: g.label, projects: g.projects, budget: budget, spent: spent, pct: bs.pct, status: bs.status, pcAlerts: pcAlerts };
     });
+  }
+
+  // Fase 4 — tela de gestão de usuários (só renderizada pro admin; ver isAdmin()
+  // em renderPanels/renderTabs). Lista quem tem acesso, com qual perfil e a
+  // quais projetos, e permite dar/editar/tirar acesso.
+  function renderUsuariosPanel() {
+    var cls = "panel" + (activeTab === "usuarios" ? " active" : "");
+    if (usersCache === null) {
+      loadUsersAndAccess().then(function (list) {
+        usersCache = list;
+        if (activeTab === "usuarios") renderAll();
+      }).catch(function () {
+        usersCache = [];
+        showToast("Não foi possível carregar a lista de usuários.", true);
+      });
+    }
+    var editUser = editingUserId ? (usersCache || []).find(function (u) { return u.id === editingUserId; }) : null;
+
+    var rows;
+    if (usersCache === null) {
+      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">🔐</span><span>Carregando…</span></div></td></tr>';
+    } else if (usersCache.length === 0) {
+      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">🔐</span><span>Nenhum usuário cadastrado ainda. Cadastre acima (use o UID copiado do painel do Supabase → Authentication → Users).</span></div></td></tr>';
+    } else {
+      rows = usersCache.map(function (u) {
+        var roleLabel = u.role === "admin" ? "Administrador(a)" : u.role === "full" ? "Acesso completo" : "Acesso limitado";
+        var projLabel = u.role === "admin" ? "Todos os projetos" : ((u.projectIds || []).map(function (pid) {
+          var p = state.projects.find(function (x) { return x.id === pid; });
+          return p ? p.name : pid;
+        }).join(", ") || "Nenhum projeto vinculado");
+        return "<tr" + (editingUserId === u.id ? ' class="editing-row"' : "") + ">" +
+          "<td>" + escapeHtml(u.name) + (u.cargo ? '<div class="muted-sub">' + escapeHtml(u.cargo) + "</div>" : "") + "</td>" +
+          "<td>" + roleLabel + "</td>" +
+          "<td>" + escapeHtml(projLabel) + "</td>" +
+          '<td><div class="row-actions">' +
+          '<button class="row-edit" data-edit-user="' + u.id + '" title="Editar usuário">✎</button>' +
+          '<button class="row-del" data-del-user="' + u.id + '" title="Remover acesso">✕</button>' +
+          "</div></td>" +
+          "</tr>";
+      }).join("");
+    }
+
+    var projectCheckboxes = state.projects.slice().sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", "pt-BR"); }).map(function (p) {
+      var checked = editUser && editUser.projectIds.indexOf(p.id) !== -1 ? " checked" : "";
+      return '<label class="uf-project-chip"><input type="checkbox" data-uf-project="' + p.id + '"' + checked + " /> " + escapeHtml(p.name) + "</label>";
+    }).join("");
+
+    var roleOptions = ["limited", "full", "admin"].map(function (r) {
+      var label = r === "admin" ? "Administrador(a) — acesso total" : r === "full" ? "Acesso completo (PMO / Produtor)" : "Acesso limitado (Estagiário)";
+      var sel = editUser ? (editUser.role === r ? " selected" : "") : (r === "limited" ? " selected" : "");
+      return '<option value="' + r + '"' + sel + ">" + label + "</option>";
+    }).join("");
+
+    return (
+      '<div class="' + cls + '" data-panel="usuarios">' +
+      '<div class="form-card' + (editUser ? " editing" : "") + '">' +
+      "<h3>" + (editUser ? "Editar acesso" : "Dar acesso a uma pessoa nova") + (editUser ? '<span class="edit-flag">Editando ' + escapeHtml(editUser.name) + "</span>" : "") + "</h3>" +
+      '<p class="form-hint">Antes de preencher aqui, crie o login (e-mail/senha) dessa pessoa no painel do Supabase → Authentication → Users, e copie o UID gerado.</p>' +
+      '<div data-user-form>' +
+      '<div class="form-grid-details">' +
+      '<div class="field full"><label>UID do usuário (copiado do Supabase)</label><input type="text" data-uf="uid" placeholder="ex.: 5f2b1a3c-9c41-4a2e-8b3a-..."' + (editUser ? " disabled" : "") + ' value="' + (editUser ? escapeHtml(editUser.id) : "") + '" /></div>' +
+      '<div class="field-inline"><label>Nome</label><input type="text" data-uf="name" value="' + (editUser ? escapeHtml(editUser.name) : "") + '" /></div>' +
+      '<div class="field-inline"><label>Cargo</label><input type="text" list="cargoOptions" data-uf="cargo" value="' + (editUser ? escapeHtml(editUser.cargo || "") : "") + '" /></div>' +
+      '<div class="field full"><label>Nível de acesso</label><select data-uf="role">' + roleOptions + "</select></div>" +
+      '<div class="field full"><label>Projetos vinculados (ignorado se o nível for Administrador)</label><div class="uf-projects-grid">' + (projectCheckboxes || '<span class="muted">Nenhum projeto cadastrado ainda.</span>') + "</div></div>" +
+      "</div>" +
+      '<div class="form-actions-row">' +
+      (editUser ? '<button class="btn subtle" type="button" data-cancel-edit-user>Cancelar edição</button>' : "") +
+      '<button class="btn" type="button" data-submit-user>' + (editUser ? "Salvar alterações" : "Dar acesso") + "</button>" +
+      "</div>" +
+      "</div>" +
+      "</div>" +
+
+      '<div class="section-title-row"><div class="section-title">Pessoas com acesso ao sistema</div></div>' +
+      '<div class="table-wrap"><table><thead><tr>' +
+      "<th>Nome</th><th>Nível</th><th>Projetos</th><th>Ações</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "</div>"
+    );
   }
 
   function renderPmoPanel() {
@@ -2497,7 +2592,7 @@
     rows += '<td><div class="row-actions">' +
       '<button class="row-toggle" data-toggle-details="' + e.id + '" title="Ver mais detalhes">▾</button>' +
       '<button class="row-edit" data-edit-entry="' + e.id + '" data-proj="' + p.id + '" title="Editar lançamento">✎</button>' +
-      '<button class="row-del" data-del-entry="' + e.id + '" data-proj="' + p.id + '" title="Excluir lançamento">✕</button>' +
+      (isLimitedRole() ? "" : '<button class="row-del" data-del-entry="' + e.id + '" data-proj="' + p.id + '" title="Excluir lançamento">✕</button>') +
       "</div></td>";
     rows += "</tr>";
     rows += '<tr class="entry-detail-row" data-detail-row="' + e.id + '" hidden><td colspan="9">' +
@@ -2675,13 +2770,13 @@
         '<div class="modal-actions" style="justify-content:flex-start;margin-bottom:16px">' +
         '<button class="btn" type="button" data-save-project-name="' + p.id + '">Salvar</button>' +
         '<button class="btn subtle" type="button" data-cancel-project-name>Cancelar</button>' +
-        '<button class="btn" type="button" style="margin-left:auto;background:var(--danger-soft);color:var(--danger);border-color:var(--danger)" data-del-project="' + p.id + '">Excluir projeto</button>' +
+        (isAdmin() ? '<button class="btn" type="button" style="margin-left:auto;background:var(--danger-soft);color:var(--danger);border-color:var(--danger)" data-del-project="' + p.id + '">Excluir projeto</button>' : "") +
         "</div>";
     } else {
       titleBlockHtml =
         '<div class="proj-title-row">' +
         '<h2 class="proj-title">' + escapeHtml(p.name) + "</h2>" +
-        '<button class="row-edit" type="button" data-edit-project-name="' + p.id + '" title="Editar informações do projeto">✎</button>' +
+        (isLimitedRole() ? "" : '<button class="row-edit" type="button" data-edit-project-name="' + p.id + '" title="Editar informações do projeto">✎</button>') +
         "</div>" +
         (metaPills ? '<div class="proj-meta-row">' + metaPills + "</div>" : "");
     }
@@ -2808,17 +2903,20 @@
         rows += '<tr>';
         rows += '<td class="wrap">' + escapeHtml(c.description || "") + "</td>";
         rows += "<td>" + (c.dueDate ? fmtDate(c.dueDate) : "—") + (overdue ? ' <span class="pill danger" style="margin-left:6px">Atrasada</span>' : "") + "</td>";
-        rows += '<td><button class="pill counterpart-status-btn ' + (c.status === "entregue" ? "ok" : "warn") + '" type="button" data-toggle-counterpart-status="' + c.id + '" data-proj="' + p.id + '" title="Clique para alternar o status">' + (c.status === "entregue" ? "Entregue" : "Pendente") + "</button></td>";
-        rows += '<td><div class="row-actions">' +
+        rows += isLimitedRole()
+          ? '<td><span class="pill ' + (c.status === "entregue" ? "ok" : "warn") + '">' + (c.status === "entregue" ? "Entregue" : "Pendente") + "</span></td>"
+          : '<td><button class="pill counterpart-status-btn ' + (c.status === "entregue" ? "ok" : "warn") + '" type="button" data-toggle-counterpart-status="' + c.id + '" data-proj="' + p.id + '" title="Clique para alternar o status">' + (c.status === "entregue" ? "Entregue" : "Pendente") + "</button></td>";
+        rows += isLimitedRole() ? "<td></td>" : ('<td><div class="row-actions">' +
           '<button class="row-edit" data-edit-counterpart="' + c.id + '" data-proj="' + p.id + '" title="Editar contrapartida">✎</button>' +
           '<button class="row-del" data-del-counterpart="' + c.id + '" data-proj="' + p.id + '" title="Excluir contrapartida">✕</button>' +
-          "</div></td>";
+          "</div></td>");
         rows += "</tr>";
       });
     }
     return (
       '<details class="section-card"' + (editCp ? " open" : "") + ' data-counterparts="' + p.id + '">' +
       '<summary>Contrapartidas de patrocínio <span class="summary-total">' + delivered + "/" + list.length + " entregues</span><span class=\"chev\">▶</span></summary>" +
+      (isLimitedRole() ? "" :
       '<div class="installment-form" data-counterpart-form="' + p.id + '">' +
       '<div class="field full"><label>Descrição da contrapartida</label><input type="text" data-cf="description" placeholder="Ex.: Logo em material de divulgação" value="' + escapeHtml(editCp ? editCp.description : "") + '" /></div>' +
       '<div class="field"><label>Prazo</label><input type="date" data-cf="dueDate" value="' + escapeHtml(editCp ? (editCp.dueDate || "") : "") + '" /></div>' +
@@ -2827,7 +2925,7 @@
       (editCp ? '<button class="btn subtle" type="button" data-cancel-counterpart="' + p.id + '">Cancelar</button>' : "") +
       '<button class="btn" type="button" data-submit-counterpart="' + p.id + '">' + (editCp ? "Salvar" : "Adicionar") + '</button>' +
       "</div>" +
-      "</div>" +
+      "</div>") +
       '<div class="table-wrap"><table><thead><tr>' +
       "<th class=\"wrap\">Contrapartida</th><th>Prazo</th><th>Status</th><th>Ações</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
@@ -3082,6 +3180,8 @@
   var SUPPLIERS_TABLE = "suppliers"; // ganham tabela própria, um registro por linha
   var PEOPLE_TABLE = "people";
   var COUNTERPARTS_TABLE = "counterparts";
+  var USER_PROFILES_TABLE = "user_profiles"; // Fase 4 — contas individuais e controle de acesso
+  var USER_PROJECTS_TABLE = "user_projects";
 
   function persist() {
     if (canWrite === false) { setSaveStatus("ro"); return; }
@@ -3212,6 +3312,54 @@
       if (handleWriteError(res3.error)) return;
       throw res3.error;
     }
+  }
+
+  // ---------------- Fase 4 — usuários e acesso por projeto ----------------
+
+  // Só o admin consegue ler todos os perfis (regra do banco); qualquer outra
+  // pessoa só enxergaria o próprio registro, então essa função só é chamada
+  // de fato na tela de Usuários, que só aparece pro admin.
+  async function loadUsersAndAccess() {
+    var usersRes = await supabase.from(USER_PROFILES_TABLE).select("id, name, cargo, role").order("name");
+    if (usersRes.error) throw usersRes.error;
+    var linksRes = await supabase.from(USER_PROJECTS_TABLE).select("user_id, project_id");
+    if (linksRes.error) throw linksRes.error;
+    var byUser = {};
+    (linksRes.data || []).forEach(function (row) {
+      if (!byUser[row.user_id]) byUser[row.user_id] = [];
+      byUser[row.user_id].push(row.project_id);
+    });
+    return (usersRes.data || []).map(function (u) {
+      return { id: u.id, name: u.name, cargo: u.cargo || "", role: u.role, projectIds: byUser[u.id] || [] };
+    });
+  }
+
+  // Salva o perfil (nome/cargo/nível) e substitui a lista de projetos
+  // vinculados a essa pessoa pela lista nova (apaga os vínculos antigos e
+  // grava os atuais — mais simples do que comparar item a item).
+  async function saveUserAccess(uid, profile, projectIds) {
+    var profRes = await supabase.from(USER_PROFILES_TABLE).upsert({
+      id: uid,
+      name: profile.name,
+      cargo: profile.cargo || null,
+      role: profile.role,
+      updated_at: new Date().toISOString()
+    });
+    if (profRes.error) throw profRes.error;
+    var delRes = await supabase.from(USER_PROJECTS_TABLE).delete().eq("user_id", uid);
+    if (delRes.error) throw delRes.error;
+    if (projectIds && projectIds.length) {
+      var rows = projectIds.map(function (pid) { return { user_id: uid, project_id: pid }; });
+      var insRes = await supabase.from(USER_PROJECTS_TABLE).insert(rows);
+      if (insRes.error) throw insRes.error;
+    }
+  }
+
+  async function deleteUserAccess(uid) {
+    var delLinks = await supabase.from(USER_PROJECTS_TABLE).delete().eq("user_id", uid);
+    if (delLinks.error) throw delLinks.error;
+    var delProfile = await supabase.from(USER_PROFILES_TABLE).delete().eq("id", uid);
+    if (delProfile.error) throw delProfile.error;
   }
 
   async function doSave() {
@@ -4286,6 +4434,68 @@
       });
     });
 
+    var submitUserBtn = panels.querySelector("[data-submit-user]");
+    if (submitUserBtn) {
+      submitUserBtn.addEventListener("click", function () {
+        var form = panels.querySelector("[data-user-form]");
+        var get = function (f) { return form.querySelector('[data-uf="' + f + '"]').value; };
+        var uid = editingUserId || get("uid").trim();
+        var name = get("name").trim();
+        var cargo = get("cargo").trim();
+        var role = get("role");
+        if (!uid || !name) {
+          form.style.outline = "1px solid var(--danger)";
+          setTimeout(function () { form.style.outline = ""; }, 900);
+          return;
+        }
+        var projectIds = [];
+        form.querySelectorAll("[data-uf-project]:checked").forEach(function (cb) {
+          projectIds.push(cb.getAttribute("data-uf-project"));
+        });
+        submitUserBtn.disabled = true;
+        saveUserAccess(uid, { name: name, cargo: cargo, role: role }, projectIds).then(function () {
+          submitUserBtn.disabled = false;
+          editingUserId = null;
+          usersCache = null; // força recarregar a lista
+          renderAll();
+          showToast("Acesso salvo.");
+        }).catch(function () {
+          submitUserBtn.disabled = false;
+          showToast("Não foi possível salvar o usuário. Confira o UID e tente de novo.", true);
+        });
+      });
+    }
+
+    var cancelEditUserBtn = panels.querySelector("[data-cancel-edit-user]");
+    if (cancelEditUserBtn) {
+      cancelEditUserBtn.addEventListener("click", function () {
+        editingUserId = null;
+        renderAll();
+      });
+    }
+
+    panels.querySelectorAll("[data-edit-user]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingUserId = btn.getAttribute("data-edit-user");
+        renderAll();
+        var form = document.querySelector("[data-user-form]");
+        if (form) form.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+
+    panels.querySelectorAll("[data-del-user]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var uid = btn.getAttribute("data-del-user");
+        var u = (usersCache || []).find(function (x) { return x.id === uid; });
+        if (!u) return;
+        pendingDelete = { pid: null, id: uid, kind: "user" };
+        document.getElementById("confirmTitle").textContent = "Remover acesso";
+        var msg = document.getElementById("confirmMessage");
+        msg.textContent = "Remover o acesso de “" + u.name + "”? A conta de login dela continua existindo no Supabase, mas ela deixa de conseguir entrar no sistema até você cadastrar de novo.";
+        document.getElementById("confirmOverlay").classList.add("open");
+      });
+    });
+
     panels.querySelectorAll("[data-del-supplier]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var sid = btn.getAttribute("data-del-supplier");
@@ -4553,6 +4763,18 @@
     if (!pendingDelete) return;
     var pid = pendingDelete.pid, id = pendingDelete.id, kind = pendingDelete.kind;
     document.getElementById("confirmOverlay").classList.remove("open");
+    if (kind === "user") {
+      pendingDelete = null;
+      deleteUserAccess(id).then(function () {
+        usersCache = null;
+        if (editingUserId === id) editingUserId = null;
+        renderAll();
+        showToast("Acesso removido.");
+      }).catch(function () {
+        showToast("Não foi possível remover o acesso. Tente novamente.", true);
+      });
+      return;
+    }
     if (kind === "project") {
       pendingDelete = null;
       state.projects = state.projects.filter(function (x) { return x.id !== id; });
@@ -4649,15 +4871,45 @@
 
   async function startApp() {
     try {
+      await loadProfile();
+    } catch (e) {
+      showLoginScreen("Erro ao carregar seu perfil de acesso. Tente novamente.");
+      return;
+    }
+    if (!CURRENT_PROFILE) {
+      showLoginScreen("Sua conta ainda não tem um perfil de acesso configurado. Peça para o administrador te cadastrar na tela de Usuários.");
+      return;
+    }
+    try {
       await loadState();
     } catch (e) {
       if (e && e.unauthorized) { showLoginScreen(); return; }
       showToast("Erro ao carregar dados salvos.", true);
     }
+    var knownTabs = ["resumo", "fornecedores", "pessoas", "pmos", "usuarios"];
+    var stillValid = knownTabs.indexOf(activeTab) !== -1 || state.projects.some(function (p) { return p.id === activeTab; });
+    if (!stillValid || (activeTab === "usuarios" && !isAdmin())) {
+      activeTab = "resumo";
+      try { sessionStorage.setItem("painel-active-tab", "resumo"); } catch (e) {}
+    }
     canWrite = true;
     showApp();
     renderAll();
     setSaveStatus("ok");
+  }
+
+  // Fase 4 — busca o perfil de acesso (nome, cargo, nível) da pessoa logada.
+  // Sem esse registro em "user_profiles", a pessoa não enxerga nada (é assim
+  // que o controle de acesso por projeto funciona).
+  async function loadProfile() {
+    CURRENT_PROFILE = null;
+    if (!CURRENT_USER || !CURRENT_USER.id) return;
+    var res = await supabase.from("user_profiles").select("id, name, cargo, role").eq("id", CURRENT_USER.id).single();
+    if (res.error) {
+      if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
+      return; // sem perfil ainda (ex.: PGRST116 - nenhuma linha) — trata como "sem acesso" lá em cima
+    }
+    CURRENT_PROFILE = res.data;
   }
 
   function displayNameFromUser(user) {
@@ -4688,7 +4940,7 @@
           showLoginScreen(LOGIN_ERROR_MESSAGES[r.error.message] || r.error.message || "Não foi possível entrar.");
           return;
         }
-        CURRENT_USER = { email: r.data.user.email, name: displayNameFromUser(r.data.user) };
+        CURRENT_USER = { id: r.data.user.id, email: r.data.user.email, name: displayNameFromUser(r.data.user) };
         startApp();
       }).catch(function () {
         btn.disabled = false;
@@ -4702,6 +4954,8 @@
       logoutBtn.addEventListener("click", function () {
         supabase.auth.signOut().then(function () {
           CURRENT_USER = null;
+          CURRENT_PROFILE = null;
+          usersCache = null;
           state = { projects: [] };
           showLoginScreen();
         });
@@ -4714,7 +4968,7 @@
       var res = await supabase.auth.getSession();
       var session = res.data && res.data.session;
       if (!session) { showLoginScreen(); return; }
-      CURRENT_USER = { email: session.user.email, name: displayNameFromUser(session.user) };
+      CURRENT_USER = { id: session.user.id, email: session.user.email, name: displayNameFromUser(session.user) };
       await startApp();
     } catch (e) {
       showLoginScreen("Erro de conexão. Tente novamente.");
