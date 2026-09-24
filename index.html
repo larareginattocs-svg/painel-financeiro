@@ -1620,6 +1620,45 @@
     return res.data.path;
   }
 
+  // Recorta a foto num quadrado (centralizado) e redimensiona pra uma resolução
+  // fixa boa o bastante pra ficar nítida mesmo em telas de alta densidade (retina),
+  // além de deixar o arquivo bem mais leve pra subir e carregar depois.
+  // Se algo der errado (formato não suportado pelo canvas, etc.), devolve o arquivo original.
+  function resizeSquarePhoto(file, targetSize) {
+    targetSize = targetSize || 320;
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var side = Math.min(img.naturalWidth, img.naturalHeight);
+          var sx = (img.naturalWidth - side) / 2;
+          var sy = (img.naturalHeight - side) / 2;
+          var canvas = document.createElement("canvas");
+          canvas.width = targetSize;
+          canvas.height = targetSize;
+          var ctx = canvas.getContext("2d");
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(img, sx, sy, side, side, 0, 0, targetSize, targetSize);
+          canvas.toBlob(function (blob) {
+            URL.revokeObjectURL(url);
+            if (!blob) { resolve(file); return; }
+            resolve(new File([blob], (file.name || "foto").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }));
+          }, "image/jpeg", 0.92);
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          resolve(file);
+        }
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
+      img.src = url;
+    });
+  }
+
   // Bucket público (fotos) — devolve a URL final direto, sem precisar assinar.
   function publicUrlFor(bucket, path) {
     var res = supabase.storage.from(bucket).getPublicUrl(path);
@@ -4707,7 +4746,9 @@
           return;
         }
         input.disabled = true;
-        uploadToBucket(PMO_PHOTO_BUCKET, "avatars", file).then(function (path) {
+        resizeSquarePhoto(file).then(function (resized) {
+          return uploadToBucket(PMO_PHOTO_BUCKET, "avatars", resized);
+        }).then(function (path) {
           input.disabled = false;
           if (!state.pmoPhotos || typeof state.pmoPhotos !== "object") state.pmoPhotos = {};
           state.pmoPhotos[label] = publicUrlFor(PMO_PHOTO_BUCKET, path);
@@ -4752,7 +4793,9 @@
         if (file) {
           if (file.size > MAX_PMO_PHOTO_BYTES) { alert("Imagem muito grande (máx. 2MB)."); return; }
           btn.disabled = true;
-          uploadToBucket(PMO_PHOTO_BUCKET, "team", file).then(function (path) {
+          resizeSquarePhoto(file).then(function (resized) {
+            return uploadToBucket(PMO_PHOTO_BUCKET, "team", resized);
+          }).then(function (path) {
             btn.disabled = false;
             pushMember(publicUrlFor(PMO_PHOTO_BUCKET, path));
           }).catch(function () {
@@ -4809,7 +4852,9 @@
         if (file) {
           if (file.size > MAX_PMO_PHOTO_BYTES) { alert("Imagem muito grande (máx. 2MB)."); return; }
           btn.disabled = true;
-          uploadToBucket(PMO_PHOTO_BUCKET, "team", file).then(function (path) {
+          resizeSquarePhoto(file).then(function (resized) {
+            return uploadToBucket(PMO_PHOTO_BUCKET, "team", resized);
+          }).then(function (path) {
             btn.disabled = false;
             applyEdit(publicUrlFor(PMO_PHOTO_BUCKET, path));
           }).catch(function () {
