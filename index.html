@@ -199,7 +199,7 @@
     position: relative; z-index: 2;
     align-self: flex-start;
   }
-  .login-side-logo { height: 26px; width: auto; display: block; }
+  .login-side-logo { height: 34px; width: auto; display: block; }
   .login-side-mid { position: relative; z-index: 2; }
   .login-side-title { font-size: clamp(28px, 4vw, 44px); line-height: 1.12; font-weight: 700; margin: 0 0 12px; color: #ffffff; }
   .login-side-sub { font-size: 15px; color: #cabfdb; max-width: 380px; margin: 0; }
@@ -240,7 +240,7 @@
     padding: 36px 32px;
     box-shadow: 0 20px 60px rgba(0,0,0,0.16);
   }
-  .login-card-logo { height: 30px; width: auto; display: block; margin-bottom: 22px; }
+  .login-card-logo { height: 40px; width: auto; display: block; margin-bottom: 22px; }
   .login-title { font-size: 22px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
   .login-subtitle { font-size: 13.5px; color: var(--ink-faint); margin: 0 0 22px; line-height: 1.5; }
   .login-error {
@@ -305,8 +305,8 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    flex: 0 0 220px;
-    width: 220px;
+    flex: 0 0 260px;
+    width: 260px;
     position: sticky;
     top: 20px;
     background: var(--surface);
@@ -327,9 +327,9 @@
     font-weight: 600;
     color: var(--ink-soft);
     cursor: pointer;
-    white-space: nowrap;
+    white-space: normal;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     text-align: left;
     width: 100%;
@@ -342,12 +342,13 @@
     font-weight: 700;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 22%, transparent);
   }
-  .tab-ico { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
-  .tab-label { overflow: hidden; text-overflow: ellipsis; }
+  .tab-ico { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; margin-top: 2px; }
+  .tab-label { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; white-space: normal; line-height: 1.25; padding-top: 1px; }
   .tab .pip {
     width: 7px; height: 7px; border-radius: 50%;
     flex-shrink: 0;
     margin-left: auto;
+    margin-top: 6px;
   }
   .tab-add {
     color: var(--brand);
@@ -365,6 +366,7 @@
     .app-layout { flex-direction: column; align-items: stretch; }
     .main-content { width: 100%; min-width: 0; }
     .tabs {
+      flex: 0 0 auto;
       flex-direction: row;
       flex-wrap: nowrap;
       overflow-x: auto;
@@ -373,7 +375,10 @@
       border-radius: 10px;
       gap: 4px;
     }
-    .tab { border-left: none; border-bottom: 2px solid transparent; border-radius: 6px; }
+    .tab { border-left: none; border-bottom: 2px solid transparent; border-radius: 6px; white-space: nowrap; align-items: center; flex-shrink: 0; }
+    .tab-ico { margin-top: 0; }
+    .tab-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+    .tab .pip { margin-top: 0; }
     .tab.active { border-left-color: transparent; border-bottom-color: var(--gold); }
     .tab-add { border-top: none; margin-top: 0; margin-left: auto; }
   }
@@ -1114,8 +1119,13 @@
   .pmo-team-chip-info { display: flex; flex-direction: column; line-height: 1.3; }
   .pmo-team-chip-name { font-size: 12.5px; font-weight: 600; }
   .pmo-team-chip-role { font-size: 10.5px; color: var(--ink-soft); font-weight: 500; }
-  .pmo-team-chip-remove { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 11px; padding: 0; line-height: 1; align-self: flex-start; }
+  .pmo-team-chip-actions { display: flex; align-items: center; gap: 4px; align-self: flex-start; }
+  .pmo-team-chip-edit, .pmo-team-chip-remove { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 11px; padding: 0; line-height: 1; }
+  .pmo-team-chip-edit:hover { color: var(--brand); }
   .pmo-team-chip-remove:hover { color: var(--danger); }
+  .pmo-team-chip.editing { border-color: var(--brand); background: var(--brand-soft); }
+  .pmo-team-form-cancel { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 12.5px; padding: 6px 4px; text-decoration: underline; }
+  .pmo-team-form-cancel:hover { color: var(--ink); }
   .pmo-team-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .pmo-team-name-input, .pmo-team-role-input {
     flex: 1;
@@ -1580,6 +1590,7 @@
   var editingProjectName = null; // id of project whose name field is currently open for editing
   var editingRubricaBudget = null; // rubrica key whose "orçamento previsto" field is currently open for editing
   var editingUserId = null; // Fase 4 — uid do usuário sendo editado na aba Usuários (null = formulário de "novo")
+  var editingTeamMember = null; // { label, id } — membro de equipe de PMO sendo editado (null = formulário de "novo membro")
   var usersCache = null; // Fase 4 — lista de { id, name, cargo, role, projectIds }, carregada sob demanda (só admin)
   var pendingDelete = null; // { pid, id, kind } — kind: "entry" | "counterpart" | "supplier" | "person" | "project" | "user" | "artifact" — awaiting confirm in the delete modal
   var pendingAttachment = {}; // pid -> {name,path,type} (new file staged & already uploaded to Storage), {name,dataUrl} (legacy, pre-migração), null (explicit removal), or undefined (no change)
@@ -2443,18 +2454,23 @@
   // independente de já ter algum projeto vinculado.
   function renderPmoTeamHtml(label) {
     var members = (state.pmoTeams && state.pmoTeams[label]) || [];
+    var editing = editingTeamMember && editingTeamMember.label === label ? editingTeamMember.id : null;
+    var editingMember = editing ? members.find(function (m) { return m.id === editing; }) : null;
     var chips = members.map(function (m) {
       var inner = m.photo
         ? '<img src="' + m.photo + '" alt="' + escapeHtml(m.name) + '" />'
         : '<span class="pmo-avatar-initials">' + escapeHtml(initialsFor(m.name)) + "</span>";
       return (
-        '<div class="pmo-team-chip">' +
-        '<div class="pmo-avatar" style="width:30px;height:30px;font-size:11px">' + inner + "</div>" +
+        '<div class="pmo-team-chip' + (editing === m.id ? " editing" : "") + '">' +
+        '<div class="pmo-avatar" style="width:38px;height:38px;font-size:13px">' + inner + "</div>" +
         '<div class="pmo-team-chip-info">' +
         '<span class="pmo-team-chip-name">' + escapeHtml(m.name) + "</span>" +
         (m.role ? '<span class="pmo-team-chip-role">' + escapeHtml(m.role) + "</span>" : "") +
         "</div>" +
+        '<div class="pmo-team-chip-actions">' +
+        '<button type="button" class="pmo-team-chip-edit" data-team-label="' + escapeHtml(label) + '" data-edit-team-member="' + escapeHtml(m.id) + '" title="Editar membro">✎</button>' +
         '<button type="button" class="pmo-team-chip-remove" data-team-label="' + escapeHtml(label) + '" data-remove-team-member="' + escapeHtml(m.id) + '" title="Remover da equipe">✕</button>' +
+        "</div>" +
         "</div>"
       );
     }).join("");
@@ -2462,11 +2478,14 @@
       '<div class="pmo-team">' +
       '<div class="pmo-team-label">Equipe</div>' +
       (chips ? '<div class="pmo-team-chips">' + chips + "</div>" : '<div class="pmo-team-empty">Nenhum membro cadastrado ainda.</div>') +
-      '<div class="pmo-team-form" data-team-form="' + escapeHtml(label) + '">' +
-      '<input type="text" class="pmo-team-name-input" placeholder="Nome do membro da equipe" />' +
-      '<input type="text" class="pmo-team-role-input" list="pmoTeamRoleOptions" placeholder="Cargo (selecione ou digite)" />' +
+      '<div class="pmo-team-form" data-team-form="' + escapeHtml(label) + '"' + (editingMember ? ' data-editing-member="' + escapeHtml(editingMember.id) + '"' : "") + '>' +
+      '<input type="text" class="pmo-team-name-input" placeholder="Nome do membro da equipe" value="' + (editingMember ? escapeHtml(editingMember.name) : "") + '" />' +
+      '<input type="text" class="pmo-team-role-input" list="pmoTeamRoleOptions" placeholder="Cargo (selecione ou digite)" value="' + (editingMember ? escapeHtml(editingMember.role || "") : "") + '" />' +
       '<label class="pmo-photo-btn" title="Escolher foto (opcional)">📷<input type="file" accept="image/*" class="pmo-team-photo-input" hidden /></label>' +
-      '<button type="button" class="btn subtle pmo-team-add-btn" data-add-team-member="' + escapeHtml(label) + '">+ Adicionar</button>' +
+      (editingMember
+        ? '<button type="button" class="btn subtle pmo-team-add-btn" data-save-team-member="' + escapeHtml(label) + '">Salvar edição</button>' +
+          '<button type="button" class="pmo-team-form-cancel" data-cancel-team-edit>Cancelar</button>'
+        : '<button type="button" class="btn subtle pmo-team-add-btn" data-add-team-member="' + escapeHtml(label) + '">+ Adicionar</button>') +
       "</div>" +
       "</div>"
     );
@@ -2671,7 +2690,7 @@
       var alertBadge = badges;
       return (
         '<div class="compare-card" data-pmo-card="' + escapeHtml(g.label) + '">' +
-        '<div class="compare-card-head"><span class="compare-card-name-wrap">' + pmoAvatarImgHtml(g.label, 26) + '<span class="compare-card-name">' + escapeHtml(g.label) + "</span></span>" + alertBadge + "</div>" +
+        '<div class="compare-card-head"><span class="compare-card-name-wrap">' + pmoAvatarImgHtml(g.label, 40) + '<span class="compare-card-name">' + escapeHtml(g.label) + "</span></span>" + alertBadge + "</div>" +
         '<div class="bar-track"><div class="bar-fill ' + g.status + '" style="width:' + Math.min(100, g.pct * 100).toFixed(0) + '%"></div></div>' +
         '<div class="compare-card-figures"><span>' + fmtMoney(g.spent) + " de " + fmtMoney(g.budget) + '</span><span class="compare-card-pct">' + fmtPct(g.pct) + "</span></div>" +
         '<div class="compare-card-deadline">' + g.projects.length + (g.projects.length === 1 ? " projeto" : " projetos") + "</div>" +
@@ -2770,7 +2789,7 @@
         '<div class="form-card pmo-group">' +
         '<div class="pmo-group-head">' +
         '<div class="pmo-group-title">' +
-        '<div class="pmo-group-title-left">' + pmoAvatarImgHtml(g.label, 44) +
+        '<div class="pmo-group-title-left">' + pmoAvatarImgHtml(g.label, 60) +
         (g.label !== "Sem PMO definido"
           ? '<button type="button" class="pmo-group-name pmo-group-name-btn" data-toggle-pmo-profile="' + escapeHtml(g.label) + '">' + escapeHtml(g.label) + (isOpenProfile ? " ▲" : " ▾") + "</button>"
           : '<span class="pmo-group-name">' + escapeHtml(g.label) + "</span>") +
@@ -4746,12 +4765,72 @@
       });
     });
 
+    panels.querySelectorAll("[data-edit-team-member]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var label = btn.getAttribute("data-team-label");
+        var id = btn.getAttribute("data-edit-team-member");
+        editingTeamMember = { label: label, id: id };
+        renderAll();
+      });
+    });
+
+    panels.querySelectorAll("[data-cancel-team-edit]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingTeamMember = null;
+        renderAll();
+      });
+    });
+
+    panels.querySelectorAll("[data-save-team-member]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var label = btn.getAttribute("data-save-team-member");
+        var form = btn.closest("[data-team-form]");
+        if (!form) return;
+        var id = form.getAttribute("data-editing-member");
+        var nameInput = form.querySelector(".pmo-team-name-input");
+        var roleInput = form.querySelector(".pmo-team-role-input");
+        var fileInput = form.querySelector(".pmo-team-photo-input");
+        var name = nameInput.value.trim();
+        var role = roleInput ? roleInput.value.trim() : "";
+        if (!name) { nameInput.focus(); return; }
+        function applyEdit(photo) {
+          var list = state.pmoTeams && Array.isArray(state.pmoTeams[label]) ? state.pmoTeams[label] : [];
+          var member = list.find(function (m) { return m.id === id; });
+          if (member) {
+            member.name = name;
+            member.role = role;
+            if (photo !== undefined) member.photo = photo || "";
+          }
+          editingTeamMember = null;
+          renderAll();
+          persist();
+        }
+        var file = fileInput.files && fileInput.files[0];
+        if (file) {
+          if (file.size > MAX_PMO_PHOTO_BYTES) { alert("Imagem muito grande (máx. 2MB)."); return; }
+          btn.disabled = true;
+          uploadToBucket(PMO_PHOTO_BUCKET, "team", file).then(function (path) {
+            btn.disabled = false;
+            applyEdit(publicUrlFor(PMO_PHOTO_BUCKET, path));
+          }).catch(function () {
+            btn.disabled = false;
+            alert("Não foi possível enviar a foto. Tente novamente.");
+          });
+        } else {
+          applyEdit(undefined);
+        }
+      });
+    });
+
     panels.querySelectorAll("[data-remove-team-member]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var label = btn.getAttribute("data-team-label");
         var id = btn.getAttribute("data-remove-team-member");
         if (state.pmoTeams && Array.isArray(state.pmoTeams[label])) {
           state.pmoTeams[label] = state.pmoTeams[label].filter(function (m) { return m.id !== id; });
+        }
+        if (editingTeamMember && editingTeamMember.label === label && editingTeamMember.id === id) {
+          editingTeamMember = null;
         }
         renderAll();
         persist();
