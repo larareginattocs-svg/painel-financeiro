@@ -1372,6 +1372,23 @@
       <button type="submit" class="btn primary login-submit" id="loginSubmit">Entrar</button>
       <div class="login-card-foot">Precisa de ajuda para acessar? Fale com quem administra o sistema na sua organização.</div>
     </form>
+    <form class="login-card" id="recoveryForm" style="display:none">
+      <h2 class="login-title">Defina sua nova senha</h2>
+      <p class="login-subtitle">Você veio de um link de redefinição de senha. Escolha uma nova senha pra continuar.</p>
+      <div class="login-error" id="recoveryError"></div>
+      <label class="login-field">
+        <span>Nova senha</span>
+        <div class="login-field-password-wrap">
+          <input type="password" id="recoveryPassword" autocomplete="new-password" required minlength="6" />
+          <button type="button" class="login-password-toggle" id="recoveryPasswordToggle" title="Mostrar/ocultar senha" aria-label="Mostrar ou ocultar senha">👁</button>
+        </div>
+      </label>
+      <label class="login-field">
+        <span>Confirme a nova senha</span>
+        <input type="password" id="recoveryPasswordConfirm" autocomplete="new-password" required minlength="6" />
+      </label>
+      <button type="submit" class="btn primary login-submit" id="recoverySubmit">Salvar nova senha</button>
+    </form>
     </div>
   </div>
   </div>
@@ -1576,6 +1593,22 @@
   var SUPABASE_ANON_KEY = "sb_publishable_QLHW8nmiTzgygxd9L8DW5Q_RtecEfI1";
 
   var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // Fluxo de "esqueci minha senha": quando a pessoa chega pelo link do e-mail,
+  // o Supabase dispara o evento PASSWORD_RECOVERY assim que o cliente é criado
+  // (antes mesmo do boot() rodar), então o listener precisa estar registrado
+  // já aqui em cima. Enquanto recoveryMode for true, o checkSession() do boot
+  // não deve levar a pessoa direto pro app — quem manda é a tela de nova senha.
+  var recoveryMode = false;
+  supabase.auth.onAuthStateChange(function (event, session) {
+    if (event === "PASSWORD_RECOVERY") {
+      recoveryMode = true;
+      if (session && session.user) {
+        CURRENT_USER = { id: session.user.id, email: session.user.email, name: displayNameFromUser(session.user) };
+      }
+      showRecoveryScreen();
+    }
+  });
 
   var CATEGORIES = ["Recursos Humanos", "Material Esportivo", "Divulgação", "Transporte", "Alimentação", "Serviços/Terceiros", "Locação de Espaço", "Administrativo", "Equipamentos", "Outros"];
   var PAYMENTS = ["Boleto", "Transferência", "Pix", "Cartão", "Dinheiro", "Outro"];
@@ -5644,6 +5677,25 @@
     }
     var pass = document.getElementById("loginPassword");
     if (pass) pass.value = "";
+    var recoveryForm = document.getElementById("recoveryForm");
+    var loginForm = document.getElementById("loginForm");
+    if (recoveryForm) recoveryForm.style.display = "none";
+    if (loginForm) loginForm.style.display = "";
+  }
+
+  // Chamada quando a pessoa chega pelo link de "esqueci minha senha" (evento
+  // PASSWORD_RECOVERY do Supabase) — mostra o formulário de nova senha em vez
+  // do login normal ou do app.
+  function showRecoveryScreen() {
+    canWrite = false;
+    var appShell = document.getElementById("appShell");
+    var login = document.getElementById("loginScreen");
+    var loginForm = document.getElementById("loginForm");
+    var recoveryForm = document.getElementById("recoveryForm");
+    if (appShell) appShell.style.display = "none";
+    if (login) login.style.display = "flex";
+    if (loginForm) loginForm.style.display = "none";
+    if (recoveryForm) recoveryForm.style.display = "";
   }
 
   function showApp() {
@@ -5805,11 +5857,55 @@
         });
       });
     }
+
+    var recoveryPwToggle = document.getElementById("recoveryPasswordToggle");
+    if (recoveryPwToggle) {
+      recoveryPwToggle.addEventListener("click", function () {
+        var pwInput = document.getElementById("recoveryPassword");
+        var showing = pwInput.type === "text";
+        pwInput.type = showing ? "password" : "text";
+        recoveryPwToggle.textContent = showing ? "👁" : "🙈";
+        recoveryPwToggle.title = showing ? "Mostrar senha" : "Ocultar senha";
+      });
+    }
+
+    var recoveryForm = document.getElementById("recoveryForm");
+    if (recoveryForm) {
+      recoveryForm.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var pw1 = document.getElementById("recoveryPassword").value;
+        var pw2 = document.getElementById("recoveryPasswordConfirm").value;
+        var errEl = document.getElementById("recoveryError");
+        var showErr = function (msg) { errEl.textContent = msg; errEl.style.display = "block"; };
+        errEl.style.display = "none";
+        if (pw1.length < 6) { showErr("A senha precisa ter pelo menos 6 caracteres."); return; }
+        if (pw1 !== pw2) { showErr("As senhas não coincidem."); return; }
+        var btn = document.getElementById("recoverySubmit");
+        btn.disabled = true;
+        btn.textContent = "Salvando…";
+        supabase.auth.updateUser({ password: pw1 }).then(function (r) {
+          btn.disabled = false;
+          btn.textContent = "Salvar nova senha";
+          if (r.error) {
+            showErr(r.error.message || "Não foi possível salvar a nova senha. Tente novamente.");
+            return;
+          }
+          recoveryMode = false;
+          showToast("Senha atualizada com sucesso.");
+          checkSession();
+        }).catch(function () {
+          btn.disabled = false;
+          btn.textContent = "Salvar nova senha";
+          showErr("Erro de conexão. Tente novamente.");
+        });
+      });
+    }
   }
 
   async function checkSession() {
     try {
       var res = await supabase.auth.getSession();
+      if (recoveryMode) return; // a tela de nova senha já está cuidando disso
       var session = res.data && res.data.session;
       if (!session) { showLoginScreen(); return; }
       CURRENT_USER = { id: session.user.id, email: session.user.email, name: displayNameFromUser(session.user) };
