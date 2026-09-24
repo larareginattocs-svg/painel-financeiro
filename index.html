@@ -1260,16 +1260,16 @@
   .uf-projects-toolbar-sep { color: var(--border); }
   .uf-projects-count { font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
   .uf-projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 2px; }
-  .uf-project-chip {
-    font-size: 13px; display: flex; align-items: center; gap: 8px;
+  .field .uf-project-chip.uf-project-chip {
+    font-size: 13px; display: flex; align-items: flex-start; gap: 8px;
     border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
     background: var(--surface); cursor: pointer; transition: border-color .12s, background .12s;
-    min-width: 0;
+    min-width: 0; margin-bottom: 0; text-transform: none; letter-spacing: normal; font-weight: 400; color: var(--ink);
   }
   .uf-project-chip:hover { border-color: var(--brand); }
   .uf-project-chip:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
-  .uf-project-chip input { flex: 0 0 auto; margin: 0; accent-color: var(--brand); }
-  .uf-project-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .uf-project-chip input { flex: 0 0 auto; width: 15px; height: 15px; margin: 2px 0 0; accent-color: var(--brand); }
+  .uf-project-chip span { flex: 1 1 0%; min-width: 0; overflow-wrap: break-word; white-space: normal; line-height: 1.3; }
   .uf-project-chip.uf-hidden { display: none; }
   .uf-projects-empty { font-size: 13px; color: var(--ink-faint); padding: 6px 2px; }
   .muted-sub { font-size: 12px; color: var(--ink-faint); }
