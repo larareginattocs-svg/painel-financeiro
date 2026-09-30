@@ -1636,6 +1636,7 @@
       if (!Array.isArray(p.history)) p.history = [];
       if (!Array.isArray(p.counterparts)) p.counterparts = [];
       if (!Array.isArray(p.artifacts)) p.artifacts = [];
+      if (!Array.isArray(p.deliverables)) p.deliverables = [];
     });
     if (!Array.isArray(state.suppliers)) state.suppliers = [];
     if (!Array.isArray(state.people)) state.people = [];
@@ -1665,6 +1666,13 @@
   var activeTab = sessionStorage.getItem("painel-active-tab") || "resumo";
   var editing = null; // { pid, eid } — entry currently open in the form for editing
   var editingCounterpart = null; // { pid, cid } — contrapartida currently open in its mini-form
+  var editingDeliverable = null; // { pid, did } — item de entregável (Entregáveis da Lei) com o nome em edição inline
+  var DELIVERABLE_STATUSES = {
+    em_andamento: { label: "Em andamento", cls: "warn" },
+    entregue: { label: "Entregue", cls: "ok" },
+    inviavel: { label: "Inviável", cls: "danger" }
+  };
+  var DELIVERABLE_STATUS_ORDER = ["em_andamento", "entregue", "inviavel"];
   var editingSupplier = null; // id of supplier currently open in the fornecedores form
   var editingPerson = null; // id of person currently open in the recursos-humanos form
   var editingProjectName = null; // id of project whose name field is currently open for editing
@@ -3272,6 +3280,7 @@
       "</tr></thead><tbody data-entries-body=\"" + p.id + "\">" + rows + "</tbody></table></div>" +
 
       renderCounterpartsSection(p) +
+      renderDeliverablesSection(p) +
       renderArtifactsSection(p) +
       renderProjectRubricaExecutionSection(p) +
       renderHistorySection(p) +
@@ -3362,6 +3371,71 @@
       "</div>") +
       '<div class="table-wrap"><table><thead><tr>' +
       "<th class=\"wrap\">Contrapartida</th><th>Prazo</th><th>Status</th><th>Ações</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
+      "</details>"
+    );
+  }
+
+  // Fase 8 — "Entregáveis da Lei": checklist de itens que precisam ser
+  // comprovados perante a lei de incentivo (levantados manualmente pelo PMO
+  // a partir do documento "Anexo 1", cadastrado normalmente em Artefatos —
+  // o app não lê/extrai o conteúdo do arquivo, só guarda a checklist digitada).
+  function deliverableStatusPill(d, pid) {
+    var st = DELIVERABLE_STATUSES[d.status] || DELIVERABLE_STATUSES.em_andamento;
+    if (isLimitedRole()) return '<span class="pill ' + st.cls + '">' + st.label + "</span>";
+    return '<button class="pill counterpart-status-btn ' + st.cls + '" type="button" data-cycle-deliverable-status="' + d.id + '" data-proj="' + pid + '" title="Clique para alternar o status">' + st.label + "</button>";
+  }
+
+  function deliverableProofCell(d, pid) {
+    if (d.proofPath) {
+      return '<div class="row-actions">' +
+        '<button class="row-edit" type="button" data-download-deliverable-proof="' + d.id + '" data-proj="' + pid + '" title="Baixar comprovação">⬇ ' + escapeHtml(d.proofName || "arquivo") + "</button>" +
+        (isLimitedRole() ? "" : '<button class="row-del" type="button" data-del-deliverable-proof="' + d.id + '" data-proj="' + pid + '" title="Remover comprovação">✕</button>') +
+        "</div>";
+    }
+    if (isLimitedRole()) return '<span class="muted-sub">Sem comprovação</span>';
+    return '<label class="btn subtle" style="cursor:pointer;font-size:12px;white-space:nowrap">📎 Anexar<input type="file" data-deliverable-proof-input="' + d.id + '" data-proj="' + pid + '" hidden /></label>' +
+      '<div class="form-hint" data-deliverable-proof-error="' + d.id + '"></div>';
+  }
+
+  function renderDeliverablesSection(p) {
+    var list = (p.deliverables || []);
+    var delivered = list.filter(function (d) { return d.status === "entregue"; }).length;
+    var rows = "";
+    if (list.length === 0) {
+      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">📋</span><span>Nenhum entregável cadastrado ainda. Cole a lista do Anexo 1 acima pra começar.</span></div></td></tr>';
+    } else {
+      list.forEach(function (d) {
+        var isEditing = editingDeliverable && editingDeliverable.pid === p.id && editingDeliverable.did === d.id;
+        rows += "<tr>";
+        rows += '<td class="wrap">' + (isEditing
+          ? '<input type="text" data-deliverable-edit-name="' + d.id + '" value="' + escapeHtml(d.name) + '" style="width:100%" />'
+          : escapeHtml(d.name)) + "</td>";
+        rows += "<td>" + deliverableStatusPill(d, p.id) + "</td>";
+        rows += "<td>" + deliverableProofCell(d, p.id) + "</td>";
+        rows += '<td><div class="row-actions">' + (isEditing
+          ? ('<button class="row-edit" type="button" data-save-deliverable-name="' + d.id + '" data-proj="' + p.id + '" title="Salvar">✓</button>' +
+             '<button class="row-del" type="button" data-cancel-deliverable-edit="' + d.id + '" title="Cancelar">✕</button>')
+          : (isLimitedRole() ? "" :
+             ('<button class="row-edit" type="button" data-edit-deliverable="' + d.id + '" data-proj="' + p.id + '" title="Editar nome">✎</button>' +
+              '<button class="row-del" type="button" data-del-deliverable="' + d.id + '" data-proj="' + p.id + '" title="Excluir item">✕</button>'))
+          ) + "</div></td>";
+        rows += "</tr>";
+      });
+    }
+    return (
+      '<details class="section-card" data-deliverables="' + p.id + '">' +
+      '<summary>Entregáveis da Lei <span class="summary-total">' + delivered + "/" + list.length + " entregues</span><span class=\"chev\">▶</span></summary>" +
+      (isAdmin() ?
+      '<div class="installment-form" data-deliverable-bulk-form="' + p.id + '" style="flex-direction:column;align-items:stretch;gap:8px">' +
+      '<label style="font-weight:600;font-size:13px">Adicionar itens (um nome por linha — cole a lista do Anexo 1)</label>' +
+      '<textarea data-deliverable-bulk-text="' + p.id + '" rows="3" placeholder="Ex.: Relatório fotográfico&#10;Clipping de imprensa&#10;Placa de identificação" style="width:100%;resize:vertical;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:inherit"></textarea>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+      '<button class="btn" type="button" data-add-deliverables-bulk="' + p.id + '">+ Adicionar itens</button>' +
+      '<span class="form-hint" data-deliverable-bulk-error="' + p.id + '"></span>' +
+      "</div></div>" : "") +
+      '<div class="table-wrap"><table><thead><tr>' +
+      "<th class=\"wrap\">Item</th><th>Status</th><th>Comprovação</th><th>Ações</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
       "</details>"
     );
@@ -3651,6 +3725,7 @@
   var USER_PROFILES_TABLE = "user_profiles"; // Fase 4 — contas individuais e controle de acesso
   var USER_PROJECTS_TABLE = "user_projects";
   var ARTIFACTS_TABLE = "project_artifacts"; // Fase 5 — arquivos do projeto (contratos, relatórios etc.)
+  var DELIVERABLES_TABLE = "deliverables"; // Fase 8 — itens de "Entregáveis da Lei" (checklist de comprovação do Anexo 1)
 
   function persist() {
     if (canWrite === false) { setSaveStatus("ro"); return; }
@@ -3688,6 +3763,7 @@
     var copy = Object.assign({}, p);
     delete copy.entries;
     delete copy.counterparts;
+    delete copy.deliverables;
     return copy;
   }
 
@@ -3768,6 +3844,28 @@
     }
   }
 
+  async function saveDeliverableRow(pid, d) {
+    var res = await supabase.from(DELIVERABLES_TABLE).upsert({
+      id: d.id,
+      project_id: pid,
+      deliverable: d,
+      updated_at: new Date().toISOString(),
+      updated_by: CURRENT_USER ? CURRENT_USER.name : null
+    });
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
+  async function deleteDeliverableRow(id) {
+    var res = await supabase.from(DELIVERABLES_TABLE).delete().eq("id", id);
+    if (res.error) {
+      if (handleWriteError(res.error)) return;
+      throw res.error;
+    }
+  }
+
   // Excluir um projeto também leva junto os lançamentos, contrapartidas e
   // artefatos dele (senão ficariam linhas "órfãs" nas outras tabelas,
   // apontando pra um project_id que não existe mais).
@@ -3778,6 +3876,8 @@
     if (res2.error && handleWriteError(res2.error)) return;
     var res4 = await supabase.from(ARTIFACTS_TABLE).delete().eq("project_id", pid);
     if (res4.error && handleWriteError(res4.error)) return;
+    var res5 = await supabase.from(DELIVERABLES_TABLE).delete().eq("project_id", pid);
+    if (res5.error && handleWriteError(res5.error)) return;
     var res3 = await supabase.from(PROJECTS_TABLE).delete().eq("id", pid);
     if (res3.error) {
       if (handleWriteError(res3.error)) return;
@@ -4069,6 +4169,24 @@
     });
   }
 
+  async function loadDeliverables() {
+    var res = await supabase.from(DELIVERABLES_TABLE).select("id, project_id, deliverable");
+    if (res.error) {
+      if (res.error.code === "PGRST301" || /JWT|auth/i.test(res.error.message || "")) throw { unauthorized: true };
+      throw new Error(res.error.message || "Falha ao carregar entregáveis.");
+    }
+    var byProject = {};
+    (res.data || []).forEach(function (row) {
+      var d = Object.assign({}, row.deliverable);
+      d.id = row.id;
+      if (!byProject[row.project_id]) byProject[row.project_id] = [];
+      byProject[row.project_id].push(d);
+    });
+    (state.projects || []).forEach(function (p) {
+      p.deliverables = byProject[p.id] || [];
+    });
+  }
+
   // Fase 7 — números consolidados (leitura) de TODOS os projetos, mesmo os
   // que essa conta não tem acesso direto — usado só pro Painel de PMOs mostrar
   // a comparação completa. Se a função ainda não existir no banco (SQL da
@@ -4108,7 +4226,7 @@
     var light = res.data && res.data.data ? res.data.data : {};
     state = { projects: [], suppliers: [], people: [], rubricaBudgets: light.rubricaBudgets, pmoPhotos: light.pmoPhotos, pmoTeams: light.pmoTeams };
     await loadProjects();
-    await Promise.all([loadSuppliers(), loadPeople(), loadCounterparts(), loadEntries(), loadArtifacts(), loadPmoPortfolio()]);
+    await Promise.all([loadSuppliers(), loadPeople(), loadCounterparts(), loadEntries(), loadArtifacts(), loadDeliverables(), loadPmoPortfolio()]);
     normalizeState();
   }
 
@@ -5533,6 +5651,205 @@
         }
       });
     });
+
+    // ---------------- Fase 8 — Entregáveis da Lei ----------------
+
+    container.querySelectorAll("[data-add-deliverables-bulk]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-add-deliverables-bulk");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        if (!p) return;
+        var errEl = container.querySelector('[data-deliverable-bulk-error="' + pid + '"]');
+        var textarea = container.querySelector('[data-deliverable-bulk-text="' + pid + '"]');
+        var raw = textarea ? textarea.value : "";
+        var names = raw.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+        if (!names.length) {
+          if (errEl) errEl.textContent = "Digite ou cole ao menos um nome de item.";
+          return;
+        }
+        var added = names.map(function (name, i) {
+          return { id: "dlv" + Date.now() + i + Math.floor(Math.random() * 1000), name: name, status: "em_andamento", proofPath: null, proofName: null, proofSize: null };
+        });
+        if (!Array.isArray(p.deliverables)) p.deliverables = [];
+        added.forEach(function (d) { p.deliverables.push(d); });
+        logHistory(p, "add", added.length + (added.length === 1 ? " entregável cadastrado" : " entregáveis cadastrados") + " em Entregáveis da Lei");
+        renderAll();
+        var details = document.querySelector('[data-deliverables="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+        added.forEach(function (d) {
+          saveDeliverableRow(pid, d).catch(function () {
+            showToast("Não foi possível salvar um dos entregáveis no servidor. Tente novamente.", true);
+          });
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-cycle-deliverable-status]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var did = btn.getAttribute("data-cycle-deliverable-status");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var d = p && (p.deliverables || []).find(function (x) { return x.id === did; });
+        if (!d) return;
+        var idx = DELIVERABLE_STATUS_ORDER.indexOf(d.status);
+        d.status = DELIVERABLE_STATUS_ORDER[(idx + 1) % DELIVERABLE_STATUS_ORDER.length] || "em_andamento";
+        logHistory(p, "edit", "Status do entregável “" + d.name + "” alterado para " + (DELIVERABLE_STATUSES[d.status] || {}).label);
+        renderAll();
+        var details = document.querySelector('[data-deliverables="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+        saveDeliverableRow(pid, d).catch(function () {
+          showToast("Não foi possível salvar o entregável no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-edit-deliverable]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var did = btn.getAttribute("data-edit-deliverable");
+        editingDeliverable = { pid: pid, did: did };
+        renderAll();
+        var details = document.querySelector('[data-deliverables="' + pid + '"]');
+        if (details) { details.open = true; details.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      });
+    });
+
+    container.querySelectorAll("[data-cancel-deliverable-edit]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingDeliverable = null;
+        renderAll();
+      });
+    });
+
+    container.querySelectorAll("[data-save-deliverable-name]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var did = btn.getAttribute("data-save-deliverable-name");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var d = p && (p.deliverables || []).find(function (x) { return x.id === did; });
+        if (!d) return;
+        var input = container.querySelector('[data-deliverable-edit-name="' + did + '"]');
+        var name = input ? input.value.trim() : "";
+        if (!name) {
+          if (input) { input.style.outline = "1px solid var(--danger)"; setTimeout(function () { input.style.outline = ""; }, 900); }
+          return;
+        }
+        d.name = name;
+        editingDeliverable = null;
+        logHistory(p, "edit", "Entregável renomeado: " + name);
+        renderAll();
+        var details = document.querySelector('[data-deliverables="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+        saveDeliverableRow(pid, d).catch(function () {
+          showToast("Não foi possível salvar o entregável no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-del-deliverable]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var did = btn.getAttribute("data-del-deliverable");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var d = p && (p.deliverables || []).find(function (x) { return x.id === did; });
+        if (!d) return;
+        pendingDelete = { pid: pid, id: did, kind: "deliverable" };
+        document.getElementById("confirmTitle").textContent = "Excluir entregável";
+        var msg = document.getElementById("confirmMessage");
+        msg.textContent = "Excluir o item “" + d.name + "”? Essa ação não pode ser desfeita.";
+        document.getElementById("confirmOverlay").classList.add("open");
+      });
+    });
+
+    container.querySelectorAll("[data-deliverable-proof-input]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var pid = input.getAttribute("data-proj");
+        var did = input.getAttribute("data-deliverable-proof-input");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var d = p && (p.deliverables || []).find(function (x) { return x.id === did; });
+        var errEl = container.querySelector('[data-deliverable-proof-error="' + did + '"]');
+        if (errEl) errEl.textContent = "";
+        var file = input.files && input.files[0];
+        if (!file || !d) return;
+        if (file.size > MAX_ARTIFACT_BYTES) {
+          if (errEl) errEl.textContent = "Arquivo muito grande (máx. 10MB).";
+          input.value = "";
+          return;
+        }
+        input.disabled = true;
+        if (errEl) errEl.textContent = "Enviando…";
+        uploadToBucket(ARTIFACT_BUCKET, pid + "/entregaveis", file).then(function (path) {
+          d.proofPath = path;
+          d.proofName = file.name;
+          d.proofSize = file.size;
+          logHistory(p, "edit", "Comprovação anexada ao entregável “" + d.name + "”");
+          renderAll();
+          var details = document.querySelector('[data-deliverables="' + pid + '"]');
+          if (details) details.open = true;
+          persist();
+          saveDeliverableRow(pid, d).catch(function () {
+            showToast("Não foi possível salvar o entregável no servidor. Tente novamente.", true);
+          });
+        }).catch(function () {
+          input.disabled = false;
+          input.value = "";
+          if (errEl) errEl.textContent = "Não foi possível enviar o arquivo. Tente novamente.";
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-download-deliverable-proof]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var did = btn.getAttribute("data-download-deliverable-proof");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var d = p && (p.deliverables || []).find(function (x) { return x.id === did; });
+        if (!d || !d.proofPath) return;
+        btn.disabled = true;
+        signedUrlFor(ARTIFACT_BUCKET, d.proofPath, 3600).then(function (url) {
+          btn.disabled = false;
+          window.open(url, "_blank");
+        }).catch(function () {
+          btn.disabled = false;
+          alert("Não foi possível baixar o arquivo agora. Tente novamente.");
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-del-deliverable-proof]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var did = btn.getAttribute("data-del-deliverable-proof");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var d = p && (p.deliverables || []).find(function (x) { return x.id === did; });
+        if (!d) return;
+        var oldPath = d.proofPath;
+        d.proofPath = null;
+        d.proofName = null;
+        d.proofSize = null;
+        logHistory(p, "edit", "Comprovação removida do entregável “" + d.name + "”");
+        renderAll();
+        var details = document.querySelector('[data-deliverables="' + pid + '"]');
+        if (details) details.open = true;
+        if (oldPath) removeFromBucketBestEffort(ARTIFACT_BUCKET, oldPath);
+        persist();
+        saveDeliverableRow(pid, d).catch(function () {
+          showToast("Não foi possível salvar o entregável no servidor. Tente novamente.", true);
+        });
+      });
+    });
   }
 
   function updateEntryTable(pid) {
@@ -5639,6 +5956,14 @@
       p.counterparts = p.counterparts.filter(function (x) { return x.id !== id; });
       if (cp) logHistory(p, "delete", "Contrapartida excluída: " + cp.description);
       if (editingCounterpart && editingCounterpart.pid === pid && editingCounterpart.cid === id) editingCounterpart = null;
+    } else if (kind === "deliverable") {
+      var dlv = (p.deliverables || []).find(function (x) { return x.id === id; });
+      p.deliverables = (p.deliverables || []).filter(function (x) { return x.id !== id; });
+      if (dlv) {
+        logHistory(p, "delete", "Entregável excluído: " + dlv.name);
+        if (dlv.proofPath) removeFromBucketBestEffort(ARTIFACT_BUCKET, dlv.proofPath);
+      }
+      if (editingDeliverable && editingDeliverable.pid === pid && editingDeliverable.did === id) editingDeliverable = null;
     } else {
       var entry = p.entries.find(function (x) { return x.id === id; });
       p.entries = p.entries.filter(function (x) { return x.id !== id; });
@@ -5655,6 +5980,11 @@
     if (kind === "counterpart") {
       deleteCounterpartRow(id).catch(function () {
         showToast("Não foi possível excluir a contrapartida no servidor. Tente novamente.", true);
+      });
+    }
+    if (kind === "deliverable") {
+      deleteDeliverableRow(id).catch(function () {
+        showToast("Não foi possível excluir o entregável no servidor. Tente novamente.", true);
       });
     }
     saveProjectRow(p).catch(function () {
