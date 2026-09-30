@@ -1665,7 +1665,7 @@
 
   var activeTab = sessionStorage.getItem("painel-active-tab") || "resumo";
   var editing = null; // { pid, eid } — entry currently open in the form for editing
-  var editingCounterpart = null; // { pid, cid } — contrapartida currently open in its mini-form
+  var editingCounterpart = null; // { pid, cid } — item de "Entregáveis do Patrocinador" com o nome em edição inline
   var editingDeliverable = null; // { pid, did } — item de entregável (Entregáveis da Lei) com o nome em edição inline
   var DELIVERABLE_STATUSES = {
     em_andamento: { label: "Em andamento", cls: "warn" },
@@ -3330,47 +3330,84 @@
     );
   }
 
+  // Fase 9 — "Entregáveis do Patrocinador" segue a mesma estrutura de
+  // Entregáveis da Lei (checklist com status de 3 estados, comprovação e
+  // observação), só que pro que precisa ser entregue ao patrocinador —
+  // reaproveita a mesma tabela "counterparts" já em uso (campo description
+  // continua guardando o nome do item; dueDate antigo fica gravado mas não
+  // é mais mostrado).
+  function counterpartStatusPill(c, pid) {
+    var st = DELIVERABLE_STATUSES[c.status] || DELIVERABLE_STATUSES.em_andamento;
+    if (isLimitedRole()) return '<span class="pill ' + st.cls + '">' + st.label + "</span>";
+    return '<button class="pill counterpart-status-btn ' + st.cls + '" type="button" data-cycle-counterpart-status="' + c.id + '" data-proj="' + pid + '" title="Clique para alternar o status">' + st.label + "</button>";
+  }
+
+  function counterpartProofCell(c, pid) {
+    if (c.proofPath) {
+      return '<div class="row-actions">' +
+        '<button class="row-edit" type="button" data-download-counterpart-proof="' + c.id + '" data-proj="' + pid + '" title="Baixar comprovação">⬇ ' + escapeHtml(c.proofName || "arquivo") + "</button>" +
+        (isLimitedRole() ? "" : '<button class="row-del" type="button" data-del-counterpart-proof="' + c.id + '" data-proj="' + pid + '" title="Remover comprovação">✕</button>') +
+        "</div>";
+    }
+    if (isLimitedRole()) return '<span class="muted-sub">Sem comprovação</span>';
+    return '<label class="btn subtle" style="cursor:pointer;font-size:12px;white-space:nowrap">📎 Anexar<input type="file" data-counterpart-proof-input="' + c.id + '" data-proj="' + pid + '" hidden /></label>' +
+      '<div class="form-hint" data-counterpart-proof-error="' + c.id + '"></div>';
+  }
+
+  function counterpartNoteCell(c, pid) {
+    if (isLimitedRole()) return '<span class="muted-sub">' + (c.note ? escapeHtml(c.note) : "—") + "</span>";
+    return '<input type="text" data-counterpart-note="' + c.id + '" data-proj="' + pid + '" value="' + escapeHtml(c.note || "") + '" placeholder="Observação…" style="width:100%;min-width:140px;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:inherit" />';
+  }
+
+  function counterpartLinkCell(c, pid) {
+    var openBtn = c.link ? '<a class="row-edit" href="' + escapeHtml(c.link) + '" target="_blank" rel="noopener noreferrer" title="Abrir link" style="text-decoration:none">🔗</a>' : "";
+    if (isLimitedRole()) return openBtn || '<span class="muted-sub">—</span>';
+    return '<div style="display:flex;gap:6px;align-items:center">' +
+      '<input type="url" data-counterpart-link="' + c.id + '" data-proj="' + pid + '" value="' + escapeHtml(c.link || "") + '" placeholder="https://…" style="flex:1;min-width:120px;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:inherit" />' +
+      openBtn +
+      "</div>";
+  }
+
   function renderCounterpartsSection(p) {
-    var editCp = (editingCounterpart && editingCounterpart.pid === p.id)
-      ? p.counterparts.find(function (c) { return c.id === editingCounterpart.cid; })
-      : null;
-    var list = p.counterparts.slice().sort(function (a, b) { return (a.dueDate || "9999").localeCompare(b.dueDate || "9999"); });
+    var list = (p.counterparts || []);
     var delivered = list.filter(function (c) { return c.status === "entregue"; }).length;
     var rows = "";
     if (list.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">🤝</span><span>Nenhuma contrapartida cadastrada ainda.</span></div></td></tr>';
+      rows = '<tr class="empty-row"><td colspan="6"><div class="empty-state"><span class="empty-ico">🤝</span><span>Nenhum entregável do patrocinador cadastrado ainda.</span></div></td></tr>';
     } else {
-      var today = new Date().toISOString().slice(0, 10);
       list.forEach(function (c) {
-        var overdue = c.status !== "entregue" && c.dueDate && c.dueDate < today;
-        rows += '<tr>';
-        rows += '<td class="wrap">' + escapeHtml(c.description || "") + "</td>";
-        rows += "<td>" + (c.dueDate ? fmtDate(c.dueDate) : "—") + (overdue ? ' <span class="pill danger" style="margin-left:6px">Atrasada</span>' : "") + "</td>";
-        rows += isLimitedRole()
-          ? '<td><span class="pill ' + (c.status === "entregue" ? "ok" : "warn") + '">' + (c.status === "entregue" ? "Entregue" : "Pendente") + "</span></td>"
-          : '<td><button class="pill counterpart-status-btn ' + (c.status === "entregue" ? "ok" : "warn") + '" type="button" data-toggle-counterpart-status="' + c.id + '" data-proj="' + p.id + '" title="Clique para alternar o status">' + (c.status === "entregue" ? "Entregue" : "Pendente") + "</button></td>";
-        rows += isLimitedRole() ? "<td></td>" : ('<td><div class="row-actions">' +
-          '<button class="row-edit" data-edit-counterpart="' + c.id + '" data-proj="' + p.id + '" title="Editar contrapartida">✎</button>' +
-          '<button class="row-del" data-del-counterpart="' + c.id + '" data-proj="' + p.id + '" title="Excluir contrapartida">✕</button>' +
-          "</div></td>");
+        var isEditing = editingCounterpart && editingCounterpart.pid === p.id && editingCounterpart.cid === c.id;
+        rows += "<tr>";
+        rows += '<td class="wrap">' + (isEditing
+          ? '<input type="text" data-counterpart-edit-name="' + c.id + '" value="' + escapeHtml(c.description || "") + '" style="width:100%" />'
+          : escapeHtml(c.description || "")) + "</td>";
+        rows += "<td>" + counterpartStatusPill(c, p.id) + "</td>";
+        rows += "<td>" + counterpartProofCell(c, p.id) + "</td>";
+        rows += "<td>" + counterpartLinkCell(c, p.id) + "</td>";
+        rows += "<td>" + counterpartNoteCell(c, p.id) + "</td>";
+        rows += '<td><div class="row-actions">' + (isEditing
+          ? ('<button class="row-edit" type="button" data-save-counterpart-name="' + c.id + '" data-proj="' + p.id + '" title="Salvar">✓</button>' +
+             '<button class="row-del" type="button" data-cancel-counterpart-edit="' + c.id + '" title="Cancelar">✕</button>')
+          : (isLimitedRole() ? "" :
+             ('<button class="row-edit" type="button" data-edit-counterpart="' + c.id + '" data-proj="' + p.id + '" title="Editar nome">✎</button>' +
+              '<button class="row-del" type="button" data-del-counterpart="' + c.id + '" data-proj="' + p.id + '" title="Excluir item">✕</button>'))
+          ) + "</div></td>";
         rows += "</tr>";
       });
     }
     return (
-      '<details class="section-card"' + (editCp ? " open" : "") + ' data-counterparts="' + p.id + '">' +
-      '<summary>Contrapartidas de patrocínio <span class="summary-total">' + delivered + "/" + list.length + " entregues</span><span class=\"chev\">▶</span></summary>" +
-      (isLimitedRole() ? "" :
-      '<div class="installment-form" data-counterpart-form="' + p.id + '">' +
-      '<div class="field full"><label>Descrição da contrapartida</label><input type="text" data-cf="description" placeholder="Ex.: Logo em material de divulgação" value="' + escapeHtml(editCp ? editCp.description : "") + '" /></div>' +
-      '<div class="field"><label>Prazo</label><input type="date" data-cf="dueDate" value="' + escapeHtml(editCp ? (editCp.dueDate || "") : "") + '" /></div>' +
-      '<div class="field"><label>Status</label><select data-cf="status"><option value="pendente"' + (!editCp || editCp.status !== "entregue" ? " selected" : "") + '>Pendente</option><option value="entregue"' + (editCp && editCp.status === "entregue" ? " selected" : "") + ">Entregue</option></select></div>" +
-      '<div style="display:flex;gap:8px">' +
-      (editCp ? '<button class="btn subtle" type="button" data-cancel-counterpart="' + p.id + '">Cancelar</button>' : "") +
-      '<button class="btn" type="button" data-submit-counterpart="' + p.id + '">' + (editCp ? "Salvar" : "Adicionar") + '</button>' +
-      "</div>" +
-      "</div>") +
+      '<details class="section-card" data-counterparts="' + p.id + '">' +
+      '<summary>Entregáveis do Patrocinador <span class="summary-total">' + delivered + "/" + list.length + " entregues</span><span class=\"chev\">▶</span></summary>" +
+      (isAdmin() ?
+      '<div class="installment-form" data-counterpart-bulk-form="' + p.id + '" style="flex-direction:column;align-items:stretch;gap:8px">' +
+      '<label style="font-weight:600;font-size:13px">Adicionar itens (um nome por linha)</label>' +
+      '<textarea data-counterpart-bulk-text="' + p.id + '" rows="3" placeholder="Ex.: Logo em material de divulgação&#10;Menção no evento&#10;Relatório de resultados" style="width:100%;resize:vertical;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:inherit"></textarea>' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+      '<button class="btn" type="button" data-add-counterparts-bulk="' + p.id + '">+ Adicionar itens</button>' +
+      '<span class="form-hint" data-counterpart-bulk-error="' + p.id + '"></span>' +
+      "</div></div>" : "") +
       '<div class="table-wrap"><table><thead><tr>' +
-      "<th class=\"wrap\">Contrapartida</th><th>Prazo</th><th>Status</th><th>Ações</th>" +
+      "<th class=\"wrap\">Item</th><th>Status</th><th>Comprovação</th><th>Link</th><th>Observação</th><th>Ações</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
       "</details>"
     );
@@ -3403,12 +3440,21 @@
     return '<input type="text" data-deliverable-note="' + d.id + '" data-proj="' + pid + '" value="' + escapeHtml(d.note || "") + '" placeholder="Observação…" style="width:100%;min-width:140px;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:inherit" />';
   }
 
+  function deliverableLinkCell(d, pid) {
+    var openBtn = d.link ? '<a class="row-edit" href="' + escapeHtml(d.link) + '" target="_blank" rel="noopener noreferrer" title="Abrir link" style="text-decoration:none">🔗</a>' : "";
+    if (isLimitedRole()) return openBtn || '<span class="muted-sub">—</span>';
+    return '<div style="display:flex;gap:6px;align-items:center">' +
+      '<input type="url" data-deliverable-link="' + d.id + '" data-proj="' + pid + '" value="' + escapeHtml(d.link || "") + '" placeholder="https://…" style="flex:1;min-width:120px;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:inherit" />' +
+      openBtn +
+      "</div>";
+  }
+
   function renderDeliverablesSection(p) {
     var list = (p.deliverables || []);
     var delivered = list.filter(function (d) { return d.status === "entregue"; }).length;
     var rows = "";
     if (list.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="5"><div class="empty-state"><span class="empty-ico">📋</span><span>Nenhum entregável cadastrado ainda. Cole a lista do Anexo 1 acima pra começar.</span></div></td></tr>';
+      rows = '<tr class="empty-row"><td colspan="6"><div class="empty-state"><span class="empty-ico">📋</span><span>Nenhum entregável cadastrado ainda. Cole a lista do Anexo 1 acima pra começar.</span></div></td></tr>';
     } else {
       list.forEach(function (d) {
         var isEditing = editingDeliverable && editingDeliverable.pid === p.id && editingDeliverable.did === d.id;
@@ -3418,6 +3464,7 @@
           : escapeHtml(d.name)) + "</td>";
         rows += "<td>" + deliverableStatusPill(d, p.id) + "</td>";
         rows += "<td>" + deliverableProofCell(d, p.id) + "</td>";
+        rows += "<td>" + deliverableLinkCell(d, p.id) + "</td>";
         rows += "<td>" + deliverableNoteCell(d, p.id) + "</td>";
         rows += '<td><div class="row-actions">' + (isEditing
           ? ('<button class="row-edit" type="button" data-save-deliverable-name="' + d.id + '" data-proj="' + p.id + '" title="Salvar">✓</button>' +
@@ -3441,7 +3488,7 @@
       '<span class="form-hint" data-deliverable-bulk-error="' + p.id + '"></span>' +
       "</div></div>" : "") +
       '<div class="table-wrap"><table><thead><tr>' +
-      "<th class=\"wrap\">Item</th><th>Status</th><th>Comprovação</th><th>Observação</th><th>Ações</th>" +
+      "<th class=\"wrap\">Item</th><th>Status</th><th>Comprovação</th><th>Link</th><th>Observação</th><th>Ações</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
       "</details>"
     );
@@ -4816,73 +4863,33 @@
       });
     });
 
-    panels.querySelectorAll("[data-submit-counterpart]").forEach(function (btn) {
+    panels.querySelectorAll("[data-add-counterparts-bulk]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        var pid = btn.getAttribute("data-submit-counterpart");
+        var pid = btn.getAttribute("data-add-counterparts-bulk");
         var p = state.projects.find(function (x) { return x.id === pid; });
         if (!p) return;
-        var form = panels.querySelector('[data-counterpart-form="' + pid + '"]');
-        var get = function (f) { return form.querySelector('[data-cf="' + f + '"]').value; };
-        var description = get("description").trim(), dueDate = get("dueDate"), status = get("status");
-        if (!description) {
-          form.style.outline = "1px solid var(--danger)";
-          setTimeout(function () { form.style.outline = ""; }, 900);
+        var errEl = panels.querySelector('[data-counterpart-bulk-error="' + pid + '"]');
+        var textarea = panels.querySelector('[data-counterpart-bulk-text="' + pid + '"]');
+        var raw = textarea ? textarea.value : "";
+        var names = raw.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+        if (!names.length) {
+          if (errEl) errEl.textContent = "Digite ou cole ao menos um nome de item.";
           return;
         }
-        var counterpartToSave = null;
-        if (editingCounterpart && editingCounterpart.pid === pid) {
-          var existing = p.counterparts.find(function (x) { return x.id === editingCounterpart.cid; });
-          if (existing) {
-            existing.description = description; existing.dueDate = dueDate; existing.status = status;
-            logHistory(p, "edit", "Contrapartida editada: " + description);
-            counterpartToSave = existing;
-          }
-          editingCounterpart = null;
-        } else {
-          var newCounterpart = { id: "cp" + Date.now() + Math.floor(Math.random() * 1000), description: description, dueDate: dueDate, status: status || "pendente" };
-          p.counterparts.push(newCounterpart);
-          logHistory(p, "add", "Contrapartida cadastrada: " + description);
-          counterpartToSave = newCounterpart;
-        }
-        renderAll();
-        var details = panels.querySelector('[data-counterparts="' + pid + '"]');
-        if (details) details.open = true;
-        persist();
-        if (counterpartToSave) {
-          saveCounterpartRow(pid, counterpartToSave).catch(function () {
-            showToast("Não foi possível salvar a contrapartida no servidor. Tente novamente.", true);
-          });
-        }
-        saveProjectRow(p).catch(function () {
-          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        var added = names.map(function (name, i) {
+          return { id: "cp" + Date.now() + i + Math.floor(Math.random() * 1000), description: name, status: "em_andamento", proofPath: null, proofName: null, proofSize: null, note: "", link: "" };
         });
-      });
-    });
-
-    panels.querySelectorAll("[data-cancel-counterpart]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        editingCounterpart = null;
+        if (!Array.isArray(p.counterparts)) p.counterparts = [];
+        added.forEach(function (c) { p.counterparts.push(c); });
+        logHistory(p, "add", added.length + (added.length === 1 ? " entregável do patrocinador cadastrado" : " entregáveis do patrocinador cadastrados"));
         renderAll();
-        var details = panels.querySelector('[data-counterparts="' + btn.getAttribute("data-cancel-counterpart") + '"]');
-        if (details) details.open = true;
-      });
-    });
-
-    panels.querySelectorAll("[data-toggle-counterpart-status]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var pid = btn.getAttribute("data-proj");
-        var cid = btn.getAttribute("data-toggle-counterpart-status");
-        var p = state.projects.find(function (x) { return x.id === pid; });
-        var cp = p && p.counterparts.find(function (x) { return x.id === cid; });
-        if (!cp) return;
-        cp.status = cp.status === "entregue" ? "pendente" : "entregue";
-        logHistory(p, "edit", "Contrapartida " + (cp.status === "entregue" ? "marcada como entregue" : "marcada como pendente") + ": " + cp.description);
-        renderAll();
-        var details = panels.querySelector('[data-counterparts="' + pid + '"]');
+        var details = document.querySelector('[data-counterparts="' + pid + '"]');
         if (details) details.open = true;
         persist();
-        saveCounterpartRow(pid, cp).catch(function () {
-          showToast("Não foi possível salvar a contrapartida no servidor. Tente novamente.", true);
+        added.forEach(function (c) {
+          saveCounterpartRow(pid, c).catch(function () {
+            showToast("Não foi possível salvar um dos itens no servidor. Tente novamente.", true);
+          });
         });
         saveProjectRow(p).catch(function () {
           showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
@@ -5492,10 +5499,192 @@
         var cp = p.counterparts.find(function (x) { return x.id === cid; });
         if (!cp) return;
         pendingDelete = { pid: pid, id: cid, kind: "counterpart" };
-        document.getElementById("confirmTitle").textContent = "Excluir contrapartida";
+        document.getElementById("confirmTitle").textContent = "Excluir entregável do patrocinador";
         var msg = document.getElementById("confirmMessage");
-        msg.textContent = "Excluir a contrapartida “" + cp.description + "”? Essa ação não pode ser desfeita.";
+        msg.textContent = "Excluir o item “" + cp.description + "”? Essa ação não pode ser desfeita.";
         document.getElementById("confirmOverlay").classList.add("open");
+      });
+    });
+
+    container.querySelectorAll("[data-cancel-counterpart-edit]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        editingCounterpart = null;
+        renderAll();
+      });
+    });
+
+    container.querySelectorAll("[data-save-counterpart-name]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var cid = btn.getAttribute("data-save-counterpart-name");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var c = p && (p.counterparts || []).find(function (x) { return x.id === cid; });
+        if (!c) return;
+        var input = container.querySelector('[data-counterpart-edit-name="' + cid + '"]');
+        var name = input ? input.value.trim() : "";
+        if (!name) {
+          if (input) { input.style.outline = "1px solid var(--danger)"; setTimeout(function () { input.style.outline = ""; }, 900); }
+          return;
+        }
+        c.description = name;
+        editingCounterpart = null;
+        logHistory(p, "edit", "Entregável do patrocinador renomeado: " + name);
+        renderAll();
+        var details = document.querySelector('[data-counterparts="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+        saveCounterpartRow(pid, c).catch(function () {
+          showToast("Não foi possível salvar o item no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-cycle-counterpart-status]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var cid = btn.getAttribute("data-cycle-counterpart-status");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var c = p && (p.counterparts || []).find(function (x) { return x.id === cid; });
+        if (!c) return;
+        var idx = DELIVERABLE_STATUS_ORDER.indexOf(c.status);
+        c.status = DELIVERABLE_STATUS_ORDER[(idx + 1) % DELIVERABLE_STATUS_ORDER.length] || "em_andamento";
+        logHistory(p, "edit", "Status do entregável do patrocinador “" + c.description + "” alterado para " + (DELIVERABLE_STATUSES[c.status] || {}).label);
+        renderAll();
+        var details = document.querySelector('[data-counterparts="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+        saveCounterpartRow(pid, c).catch(function () {
+          showToast("Não foi possível salvar o item no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-counterpart-proof-input]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var pid = input.getAttribute("data-proj");
+        var cid = input.getAttribute("data-counterpart-proof-input");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var c = p && (p.counterparts || []).find(function (x) { return x.id === cid; });
+        var errEl = container.querySelector('[data-counterpart-proof-error="' + cid + '"]');
+        if (errEl) errEl.textContent = "";
+        var file = input.files && input.files[0];
+        if (!file || !c) return;
+        if (file.size > MAX_ARTIFACT_BYTES) {
+          if (errEl) errEl.textContent = "Arquivo muito grande (máx. 10MB).";
+          input.value = "";
+          return;
+        }
+        input.disabled = true;
+        if (errEl) errEl.textContent = "Enviando…";
+        uploadToBucket(ARTIFACT_BUCKET, pid + "/patrocinio", file).then(function (path) {
+          c.proofPath = path;
+          c.proofName = file.name;
+          c.proofSize = file.size;
+          logHistory(p, "edit", "Comprovação anexada ao entregável do patrocinador “" + c.description + "”");
+          renderAll();
+          var details = document.querySelector('[data-counterparts="' + pid + '"]');
+          if (details) details.open = true;
+          persist();
+          saveCounterpartRow(pid, c).catch(function () {
+            showToast("Não foi possível salvar o item no servidor. Tente novamente.", true);
+          });
+        }).catch(function () {
+          input.disabled = false;
+          input.value = "";
+          if (errEl) errEl.textContent = "Não foi possível enviar o arquivo. Tente novamente.";
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-download-counterpart-proof]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var cid = btn.getAttribute("data-download-counterpart-proof");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var c = p && (p.counterparts || []).find(function (x) { return x.id === cid; });
+        if (!c || !c.proofPath) return;
+        btn.disabled = true;
+        signedUrlFor(ARTIFACT_BUCKET, c.proofPath, 3600).then(function (url) {
+          btn.disabled = false;
+          window.open(url, "_blank");
+        }).catch(function () {
+          btn.disabled = false;
+          alert("Não foi possível baixar o arquivo agora. Tente novamente.");
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-del-counterpart-proof]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-proj");
+        var cid = btn.getAttribute("data-del-counterpart-proof");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var c = p && (p.counterparts || []).find(function (x) { return x.id === cid; });
+        if (!c) return;
+        var oldPath = c.proofPath;
+        c.proofPath = null;
+        c.proofName = null;
+        c.proofSize = null;
+        logHistory(p, "edit", "Comprovação removida do entregável do patrocinador “" + c.description + "”");
+        renderAll();
+        var details = document.querySelector('[data-counterparts="' + pid + '"]');
+        if (details) details.open = true;
+        if (oldPath) removeFromBucketBestEffort(ARTIFACT_BUCKET, oldPath);
+        persist();
+        saveCounterpartRow(pid, c).catch(function () {
+          showToast("Não foi possível salvar o item no servidor. Tente novamente.", true);
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-counterpart-note]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var pid = input.getAttribute("data-proj");
+        var cid = input.getAttribute("data-counterpart-note");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var c = p && (p.counterparts || []).find(function (x) { return x.id === cid; });
+        if (!c) return;
+        var note = input.value;
+        if ((c.note || "") === note) return;
+        c.note = note;
+        logHistory(p, "edit", "Observação atualizada no entregável do patrocinador “" + c.description + "”");
+        persist();
+        saveCounterpartRow(pid, c).catch(function () {
+          showToast("Não foi possível salvar a observação no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-counterpart-link]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var pid = input.getAttribute("data-proj");
+        var cid = input.getAttribute("data-counterpart-link");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var c = p && (p.counterparts || []).find(function (x) { return x.id === cid; });
+        if (!c) return;
+        var link = input.value.trim();
+        if ((c.link || "") === link) return;
+        c.link = link;
+        logHistory(p, "edit", "Link atualizado no entregável do patrocinador “" + c.description + "”");
+        renderAll();
+        var details = document.querySelector('[data-counterparts="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+        saveCounterpartRow(pid, c).catch(function () {
+          showToast("Não foi possível salvar o link no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
       });
     });
 
@@ -5674,7 +5863,7 @@
           return;
         }
         var added = names.map(function (name, i) {
-          return { id: "dlv" + Date.now() + i + Math.floor(Math.random() * 1000), name: name, status: "em_andamento", proofPath: null, proofName: null, proofSize: null, note: "" };
+          return { id: "dlv" + Date.now() + i + Math.floor(Math.random() * 1000), name: name, status: "em_andamento", proofPath: null, proofName: null, proofSize: null, note: "", link: "" };
         });
         if (!Array.isArray(p.deliverables)) p.deliverables = [];
         added.forEach(function (d) { p.deliverables.push(d); });
@@ -5837,6 +6026,30 @@
       });
     });
 
+    container.querySelectorAll("[data-deliverable-link]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var pid = input.getAttribute("data-proj");
+        var did = input.getAttribute("data-deliverable-link");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var d = p && (p.deliverables || []).find(function (x) { return x.id === did; });
+        if (!d) return;
+        var link = input.value.trim();
+        if ((d.link || "") === link) return;
+        d.link = link;
+        logHistory(p, "edit", "Link atualizado no entregável “" + d.name + "”");
+        renderAll();
+        var details = document.querySelector('[data-deliverables="' + pid + '"]');
+        if (details) details.open = true;
+        persist();
+        saveDeliverableRow(pid, d).catch(function () {
+          showToast("Não foi possível salvar o link no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
+        });
+      });
+    });
+
     container.querySelectorAll("[data-download-deliverable-proof]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var pid = btn.getAttribute("data-proj");
@@ -5981,7 +6194,10 @@
     if (kind === "counterpart") {
       var cp = p.counterparts.find(function (x) { return x.id === id; });
       p.counterparts = p.counterparts.filter(function (x) { return x.id !== id; });
-      if (cp) logHistory(p, "delete", "Contrapartida excluída: " + cp.description);
+      if (cp) {
+        logHistory(p, "delete", "Entregável do patrocinador excluído: " + cp.description);
+        if (cp.proofPath) removeFromBucketBestEffort(ARTIFACT_BUCKET, cp.proofPath);
+      }
       if (editingCounterpart && editingCounterpart.pid === pid && editingCounterpart.cid === id) editingCounterpart = null;
     } else if (kind === "deliverable") {
       var dlv = (p.deliverables || []).find(function (x) { return x.id === id; });
@@ -6006,7 +6222,7 @@
     }
     if (kind === "counterpart") {
       deleteCounterpartRow(id).catch(function () {
-        showToast("Não foi possível excluir a contrapartida no servidor. Tente novamente.", true);
+        showToast("Não foi possível excluir o entregável do patrocinador no servidor. Tente novamente.", true);
       });
     }
     if (kind === "deliverable") {
