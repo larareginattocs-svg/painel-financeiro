@@ -3398,12 +3398,17 @@
       '<div class="form-hint" data-deliverable-proof-error="' + d.id + '"></div>';
   }
 
+  function deliverableNoteCell(d, pid) {
+    if (isLimitedRole()) return '<span class="muted-sub">' + (d.note ? escapeHtml(d.note) : "—") + "</span>";
+    return '<input type="text" data-deliverable-note="' + d.id + '" data-proj="' + pid + '" value="' + escapeHtml(d.note || "") + '" placeholder="Observação…" style="width:100%;min-width:140px;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;color:inherit" />';
+  }
+
   function renderDeliverablesSection(p) {
     var list = (p.deliverables || []);
     var delivered = list.filter(function (d) { return d.status === "entregue"; }).length;
     var rows = "";
     if (list.length === 0) {
-      rows = '<tr class="empty-row"><td colspan="4"><div class="empty-state"><span class="empty-ico">📋</span><span>Nenhum entregável cadastrado ainda. Cole a lista do Anexo 1 acima pra começar.</span></div></td></tr>';
+      rows = '<tr class="empty-row"><td colspan="5"><div class="empty-state"><span class="empty-ico">📋</span><span>Nenhum entregável cadastrado ainda. Cole a lista do Anexo 1 acima pra começar.</span></div></td></tr>';
     } else {
       list.forEach(function (d) {
         var isEditing = editingDeliverable && editingDeliverable.pid === p.id && editingDeliverable.did === d.id;
@@ -3413,6 +3418,7 @@
           : escapeHtml(d.name)) + "</td>";
         rows += "<td>" + deliverableStatusPill(d, p.id) + "</td>";
         rows += "<td>" + deliverableProofCell(d, p.id) + "</td>";
+        rows += "<td>" + deliverableNoteCell(d, p.id) + "</td>";
         rows += '<td><div class="row-actions">' + (isEditing
           ? ('<button class="row-edit" type="button" data-save-deliverable-name="' + d.id + '" data-proj="' + p.id + '" title="Salvar">✓</button>' +
              '<button class="row-del" type="button" data-cancel-deliverable-edit="' + d.id + '" title="Cancelar">✕</button>')
@@ -3435,7 +3441,7 @@
       '<span class="form-hint" data-deliverable-bulk-error="' + p.id + '"></span>' +
       "</div></div>" : "") +
       '<div class="table-wrap"><table><thead><tr>' +
-      "<th class=\"wrap\">Item</th><th>Status</th><th>Comprovação</th><th>Ações</th>" +
+      "<th class=\"wrap\">Item</th><th>Status</th><th>Comprovação</th><th>Observação</th><th>Ações</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
       "</details>"
     );
@@ -5668,7 +5674,7 @@
           return;
         }
         var added = names.map(function (name, i) {
-          return { id: "dlv" + Date.now() + i + Math.floor(Math.random() * 1000), name: name, status: "em_andamento", proofPath: null, proofName: null, proofSize: null };
+          return { id: "dlv" + Date.now() + i + Math.floor(Math.random() * 1000), name: name, status: "em_andamento", proofPath: null, proofName: null, proofSize: null, note: "" };
         });
         if (!Array.isArray(p.deliverables)) p.deliverables = [];
         added.forEach(function (d) { p.deliverables.push(d); });
@@ -5806,6 +5812,27 @@
           input.disabled = false;
           input.value = "";
           if (errEl) errEl.textContent = "Não foi possível enviar o arquivo. Tente novamente.";
+        });
+      });
+    });
+
+    container.querySelectorAll("[data-deliverable-note]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var pid = input.getAttribute("data-proj");
+        var did = input.getAttribute("data-deliverable-note");
+        var p = state.projects.find(function (x) { return x.id === pid; });
+        var d = p && (p.deliverables || []).find(function (x) { return x.id === did; });
+        if (!d) return;
+        var note = input.value;
+        if ((d.note || "") === note) return;
+        d.note = note;
+        logHistory(p, "edit", "Observação atualizada no entregável “" + d.name + "”");
+        persist();
+        saveDeliverableRow(pid, d).catch(function () {
+          showToast("Não foi possível salvar a observação no servidor. Tente novamente.", true);
+        });
+        saveProjectRow(p).catch(function () {
+          showToast("Não foi possível salvar o histórico do projeto no servidor. Tente novamente.", true);
         });
       });
     });
