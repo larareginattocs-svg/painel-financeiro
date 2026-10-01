@@ -606,6 +606,12 @@
     justify-content: space-between;
     gap: 12px;
   }
+  .month-group-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .month-group-toggle {
+    background: none; border: none; cursor: pointer; padding: 2px 5px; line-height: 1;
+    font-size: 10px; color: var(--ink-soft); border-radius: 5px; flex: 0 0 auto;
+  }
+  .month-group-toggle:hover { background: var(--surface); color: var(--brand); }
   .month-group-label {
     font-family: "Barlow Condensed", sans-serif;
     font-size: 13px;
@@ -1766,6 +1772,7 @@
     try { supabase.storage.from(bucket).remove([path]).catch(function () {}); } catch (e) {}
   }
   var filterState = {}; // pid -> { text, category, payment, from, to } — view-local, not persisted
+  var collapsedMonths = {}; // "pid::refMonthKey" -> true quando o grupo do mês está recolhido — view-local, não persistido
   var canWrite = null; // null = unknown yet, true/false once resolved
   var pendingSave = false;
   var CURRENT_USER = null; // { id, email, name } — set after login
@@ -3043,15 +3050,19 @@
       var subtotal = 0;
       items.forEach(function (e) { subtotal += Number(e.amount) || 0; });
       var label = key ? fmtMonth(key) : "Sem mês definido";
+      var groupKey = p.id + "::" + (key || "__nodate__");
+      var isCollapsed = !!collapsedMonths[groupKey];
       var bulkControls = "";
       if (!key) {
         var ids = items.map(function (e) { return e.id; }).join(",");
         bulkControls = '<div class="bulk-month-row"><input type="month" data-bulk-month-input="' + p.id + '" />' +
           '<button class="btn subtle" type="button" data-bulk-month-apply="' + p.id + '" data-bulk-ids="' + ids + '">Aplicar mês a estes ' + items.length + (items.length === 1 ? " lançamento" : " lançamentos") + "</button></div>";
       }
-      rows += '<tr class="month-group-row"><td colspan="9"><div class="month-group-cell"><span class="month-group-label">' +
-        escapeHtml(label) + '</span><span class="month-group-total num">' + fmtMoney(subtotal) + "</span></div>" + bulkControls + "</td></tr>";
-      items.forEach(function (e) { rows += entryRowHtml(p, e); });
+      rows += '<tr class="month-group-row"><td colspan="9"><div class="month-group-cell"><div class="month-group-left">' +
+        '<button type="button" class="month-group-toggle" data-toggle-month="' + groupKey + '" title="' + (isCollapsed ? "Expandir" : "Recolher") + ' lançamentos" aria-label="' + (isCollapsed ? "Expandir" : "Recolher") + ' lançamentos de ' + escapeHtml(label) + '">' + (isCollapsed ? "▸" : "▾") + '</button>' +
+        '<span class="month-group-label">' + escapeHtml(label) + (isCollapsed ? ' <span class="muted-sub">(' + items.length + (items.length === 1 ? " lançamento" : " lançamentos") + ")</span>" : "") + '</span></div>' +
+        '<span class="month-group-total num">' + fmtMoney(subtotal) + "</span></div>" + (isCollapsed ? "" : bulkControls) + "</td></tr>";
+      if (!isCollapsed) items.forEach(function (e) { rows += entryRowHtml(p, e); });
     });
     return rows;
   }
@@ -5451,6 +5462,15 @@
   }
 
   function bindEntryRowActions(container) {
+    container.querySelectorAll("[data-toggle-month]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var groupKey = btn.getAttribute("data-toggle-month");
+        collapsedMonths[groupKey] = !collapsedMonths[groupKey];
+        var pid = groupKey.split("::")[0];
+        updateEntryTable(pid);
+      });
+    });
+
     container.querySelectorAll("[data-edit-entry]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var pid = btn.getAttribute("data-proj");
