@@ -311,6 +311,7 @@
     margin-bottom: 26px;
   }
   @media (max-width: 720px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+  .cards.summary-cards-collapsed { display: none; }
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -348,6 +349,16 @@
     border-radius: 12px;
     padding: 10px;
     box-shadow: var(--shadow);
+  }
+  .tabs-section-label {
+    font-family: "Barlow Condensed", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 12px 12px 2px;
+    margin-top: 4px;
   }
   .tab {
     appearance: none;
@@ -925,6 +936,7 @@
   .attach-error { margin-top: 6px; font-size: 12px; color: var(--danger); min-height: 1px; }
 
   .form-card.editing { border-color: var(--gold); }
+  .form-card-summary-left { display: flex; align-items: center; gap: 10px; }
   .form-card .edit-flag {
     display: inline-block;
     font-size: 11px;
@@ -1103,6 +1115,12 @@
   .pmo-group-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 16px; font-weight: 700; color: var(--brand); margin-bottom: 8px; flex-wrap: wrap; }
   .pmo-group-title .summary-total { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink-soft); font-weight: 500; }
   .pmo-group-title-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pmo-group-collapse-toggle {
+    background: none; border: none; cursor: pointer; padding: 2px 6px; line-height: 1;
+    font-size: 11px; color: var(--ink-soft); border-radius: 5px; flex: 0 0 auto;
+  }
+  .pmo-group-collapse-toggle:hover { background: var(--surface-sunken); color: var(--brand); }
+  .pmo-group-body { margin-top: 10px; }
   .pmo-group-name { line-height: 1; }
   .pc-deadline-text.warn { color: var(--warn); font-weight: 600; }
   .pc-deadline-text.danger { color: var(--danger); font-weight: 700; }
@@ -1696,6 +1714,7 @@
   var ARTIFACT_BUCKET = "artefatos"; // Fase 5 — bucket privado, arquivos do projeto (não são comprovantes de gasto)
   var MAX_ARTIFACT_BYTES = 10 * 1024 * 1024; // 10MB por arquivo
   var pmoProfileOpen = null; // Fase 5 — label do PMO cujo perfil detalhado está expandido (null = nenhum)
+  var collapsedPmoGroups = {}; // label -> true/false quando a pessoa já alternou manualmente o card do PMO — sem entrada aqui, usa o padrão (recolhido se não tem projeto, equipe nem alerta)
   var profilesLiteCache = null; // Fase 5 — { id, name, cargo, role, email, phone }[] de todo mundo, pro Perfil de PMO mostrar o cargo/contato
   var pmoSearchQuery = ""; // Fase 6 — filtro por nome na lista de PMOs
   var pmoPortfolio = {}; // Fase 7 — { project_id: {name, pmoResponsavel, responsibleCompany, incentiveLaw, budget, spent, pcDeadline, deadline, cpAlerts} } de TODOS os projetos (visão consolidada só-leitura, via pmo_portfolio())
@@ -1773,6 +1792,7 @@
   }
   var filterState = {}; // pid -> { text, category, payment, from, to } — view-local, not persisted
   var collapsedMonths = {}; // "pid::refMonthKey" -> true quando o grupo do mês está recolhido — view-local, não persistido
+  var entryFormOpen = {}; // pid -> true quando a pessoa já abriu manualmente o formulário "Lançar gasto" — view-local, não persistido
   var canWrite = null; // null = unknown yet, true/false once resolved
   var pendingSave = false;
   var CURRENT_USER = null; // { id, email, name } — set after login
@@ -2037,6 +2057,10 @@
   // ---------------- Rendering ----------------
 
   function renderSummaryCards() {
+    var wrap = document.getElementById("summaryCards");
+    var isProjectTab = state.projects.some(function (p) { return p.id === activeTab; });
+    if (wrap) wrap.classList.toggle("summary-cards-collapsed", isProjectTab);
+    if (isProjectTab) return; // já aparece (por projeto) no topo do próprio painel do projeto — evita duplicar a mesma fileira de números
     var totalBudget = 0, totalSpent = 0;
     state.projects.forEach(function (p) {
       var t = projectTotals(p);
@@ -2063,6 +2087,7 @@
     html += tabButton("pessoas", "Recursos Humanos", null, "🧑‍💼");
     html += tabButton("pmos", "Painel de PMOs", null, "🧭");
     if (isAdmin()) html += tabButton("usuarios", "Usuários", null, "🔐");
+    html += '<div class="tabs-section-label">Projetos</div>';
     state.projects.forEach(function (p) {
       var t = projectTotals(p);
       html += tabButton(p.id, p.name, t.status, "📁");
@@ -2877,6 +2902,11 @@
         : '<div class="empty-state"><span class="empty-ico">📁</span><span>Nenhum projeto direcionado a este PMO ainda.</span></div>';
 
       var isOpenProfile = pmoProfileOpen === g.label;
+      var teamCount = ((state.pmoTeams && state.pmoTeams[g.label]) || []).length;
+      var pmoHasActivity = g.projects.length > 0 || teamCount > 0 || g.pcAlerts > 0 || g.cpAlerts > 0;
+      var isEditingThisTeam = !!(editingTeamMember && editingTeamMember.label === g.label);
+      var pmoGroupCollapsed = !isOpenProfile && !isEditingThisTeam &&
+        (collapsedPmoGroups[g.label] != null ? collapsedPmoGroups[g.label] : !pmoHasActivity);
       var profileHtml = "";
       if (g.label !== "Sem PMO definido" && isOpenProfile) {
         if (profilesLiteCache === null) {
@@ -2930,17 +2960,20 @@
         (g.label !== "Sem PMO definido" ? pmoAvatarActionsHtml(g.label) : "") +
         "</div>" +
         '<div class="section-title-actions">' +
-        '<span class="summary-total">' + g.projects.length + (g.projects.length === 1 ? " projeto" : " projetos") + "</span>" +
+        '<span class="summary-total">' + g.projects.length + (g.projects.length === 1 ? " projeto" : " projetos") + (teamCount ? " · " + teamCount + (teamCount === 1 ? " pessoa" : " pessoas") : "") + "</span>" +
         (g.label !== "Sem PMO definido" && g.projects.length ? '<button class="btn export-btn" type="button" data-print-pmo-report="' + escapeHtml(g.label) + '">🖨️ Relatório consolidado</button>' : "") +
+        '<button type="button" class="pmo-group-collapse-toggle" data-toggle-pmo-group="' + escapeHtml(g.label) + '" title="' + (pmoGroupCollapsed ? "Expandir" : "Recolher") + ' equipe e projetos" aria-label="' + (pmoGroupCollapsed ? "Expandir" : "Recolher") + ' equipe e projetos de ' + escapeHtml(g.label) + '">' + (pmoGroupCollapsed ? "▸" : "▾") + "</button>" +
         "</div></div>" +
         '<div class="bar-track"><div class="bar-fill ' + g.status + '" style="width:' + Math.min(100, g.pct * 100).toFixed(0) + '%"></div></div>' +
         '<div class="compare-card-figures"><span>' + fmtMoney(g.spent) + " de " + fmtMoney(g.budget) + '</span><span class="compare-card-pct">' + fmtPct(g.pct) + "</span></div>" +
         workloadHtml +
         "</div>" +
+        '<div class="pmo-group-body"' + (pmoGroupCollapsed ? " hidden" : "") + '>' +
         (g.label !== "Sem PMO definido" ? renderPmoTeamHtml(g.label) : "") +
         profileHtml +
         alertHtml +
         tableHtml +
+        "</div>" +
         "</div>"
       );
     }).join("");
@@ -3105,6 +3138,7 @@
     var cls = "panel" + (activeTab === p.id ? " active" : "");
     var t = projectTotals(p);
     var editEntry = (editing && editing.pid === p.id) ? p.entries.find(function (e) { return e.id === editing.eid; }) : null;
+    var entryFormIsOpen = !!editEntry || !!entryFormOpen[p.id];
     var isRH = !!(editEntry && editEntry.category === RH_CATEGORY);
     var hasExtraDetails = !!(editEntry && (editEntry.refMonth || editEntry.supplier || editEntry.cnpj || editEntry.cnpjNA || editEntry.notes || editEntry.link || hasAttachment(editEntry.attachment)));
     var matchedSupplier = editEntry && editEntry.supplier ? findSupplierByName(editEntry.supplier) : null;
@@ -3204,8 +3238,8 @@
       "</div>" +
       "</div>" +
 
-      '<div class="form-card' + (editEntry ? " editing" : "") + '">' +
-      "<h3>Lançar gasto" + (editEntry ? '<span class="edit-flag">Editando lançamento</span>' : "") + "</h3>" +
+      '<details class="form-card section-card' + (editEntry ? " editing" : "") + '" data-entry-form-card="' + p.id + '"' + (entryFormIsOpen ? " open" : "") + ">" +
+      '<summary><span class="form-card-summary-left">Lançar gasto' + (editEntry ? '<span class="edit-flag">Editando lançamento</span>' : "") + '</span><span class="chev">▶</span></summary>' +
       '<div data-entry-form="' + p.id + '">' +
       '<div class="form-grid">' +
       '<div class="field"><label>Data</label><input type="date" data-f="date" value="' + escapeHtml(editEntry ? editEntry.date : "") + '" /></div>' +
@@ -3268,7 +3302,7 @@
       '<button class="btn" type="button" data-submit-entry="' + p.id + '">' + (editEntry ? "Salvar alterações" : "Adicionar lançamento") + "</button>" +
       "</div>" +
       "</div>" +
-      "</div>" +
+      "</details>" +
 
       '<div class="section-title-row"><div class="section-title">Lançamentos</div>' +
       '<div class="section-title-actions">' +
@@ -4951,6 +4985,18 @@
       });
     });
 
+    panels.querySelectorAll("[data-toggle-pmo-group]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var label = btn.getAttribute("data-toggle-pmo-group");
+        var g = pmoGroups().find(function (x) { return x.label === label; });
+        var teamCount = ((state.pmoTeams && state.pmoTeams[label]) || []).length;
+        var hasActivity = g ? (g.projects.length > 0 || teamCount > 0 || g.pcAlerts > 0 || g.cpAlerts > 0) : false;
+        var currentlyCollapsed = collapsedPmoGroups[label] != null ? collapsedPmoGroups[label] : !hasActivity;
+        collapsedPmoGroups[label] = !currentlyCollapsed;
+        renderAll();
+      });
+    });
+
     panels.querySelectorAll("[data-pmo-photo-input]").forEach(function (input) {
       input.addEventListener("change", function () {
         var label = input.getAttribute("data-pmo-photo-input");
@@ -5146,6 +5192,12 @@
         var pid = btn.getAttribute("data-remove-pending-attach");
         pendingAttachment[pid] = null;
         refreshAttachChip(pid);
+      });
+    });
+
+    panels.querySelectorAll("[data-entry-form-card]").forEach(function (det) {
+      det.addEventListener("toggle", function () {
+        entryFormOpen[det.getAttribute("data-entry-form-card")] = det.open;
       });
     });
 
