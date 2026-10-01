@@ -2614,7 +2614,8 @@
   // independente de já ter algum projeto vinculado.
   function renderPmoTeamHtml(label) {
     var members = (state.pmoTeams && state.pmoTeams[label]) || [];
-    var editing = editingTeamMember && editingTeamMember.label === label ? editingTeamMember.id : null;
+    var canManage = isAdmin();
+    var editing = canManage && editingTeamMember && editingTeamMember.label === label ? editingTeamMember.id : null;
     var editingMember = editing ? members.find(function (m) { return m.id === editing; }) : null;
     var chips = members.map(function (m) {
       var inner = m.photo
@@ -2627,10 +2628,12 @@
         '<span class="pmo-team-chip-name">' + escapeHtml(m.name) + "</span>" +
         (m.role ? '<span class="pmo-team-chip-role">' + escapeHtml(m.role) + "</span>" : "") +
         "</div>" +
-        '<div class="pmo-team-chip-actions">' +
-        '<button type="button" class="pmo-team-chip-edit" data-team-label="' + escapeHtml(label) + '" data-edit-team-member="' + escapeHtml(m.id) + '" title="Editar membro">✎</button>' +
-        '<button type="button" class="pmo-team-chip-remove" data-team-label="' + escapeHtml(label) + '" data-remove-team-member="' + escapeHtml(m.id) + '" title="Remover da equipe">✕</button>' +
-        "</div>" +
+        (canManage
+          ? '<div class="pmo-team-chip-actions">' +
+            '<button type="button" class="pmo-team-chip-edit" data-team-label="' + escapeHtml(label) + '" data-edit-team-member="' + escapeHtml(m.id) + '" title="Editar membro">✎</button>' +
+            '<button type="button" class="pmo-team-chip-remove" data-team-label="' + escapeHtml(label) + '" data-remove-team-member="' + escapeHtml(m.id) + '" title="Remover da equipe">✕</button>' +
+            "</div>"
+          : "") +
         "</div>"
       );
     }).join("");
@@ -2638,15 +2641,17 @@
       '<div class="pmo-team">' +
       '<div class="pmo-team-label">Equipe</div>' +
       (chips ? '<div class="pmo-team-chips">' + chips + "</div>" : '<div class="pmo-team-empty">Nenhum membro cadastrado ainda.</div>') +
-      '<div class="pmo-team-form" data-team-form="' + escapeHtml(label) + '"' + (editingMember ? ' data-editing-member="' + escapeHtml(editingMember.id) + '"' : "") + '>' +
-      '<input type="text" class="pmo-team-name-input" placeholder="Nome do membro da equipe" value="' + (editingMember ? escapeHtml(editingMember.name) : "") + '" />' +
-      '<input type="text" class="pmo-team-role-input" list="pmoTeamRoleOptions" placeholder="Cargo (selecione ou digite)" value="' + (editingMember ? escapeHtml(editingMember.role || "") : "") + '" />' +
-      '<label class="pmo-photo-btn" title="Escolher foto (opcional)">📷<input type="file" accept="image/*" class="pmo-team-photo-input" hidden /></label>' +
-      (editingMember
-        ? '<button type="button" class="btn subtle pmo-team-add-btn" data-save-team-member="' + escapeHtml(label) + '">Salvar edição</button>' +
-          '<button type="button" class="pmo-team-form-cancel" data-cancel-team-edit>Cancelar</button>'
-        : '<button type="button" class="btn subtle pmo-team-add-btn" data-add-team-member="' + escapeHtml(label) + '">+ Adicionar</button>') +
-      "</div>" +
+      (canManage
+        ? '<div class="pmo-team-form" data-team-form="' + escapeHtml(label) + '"' + (editingMember ? ' data-editing-member="' + escapeHtml(editingMember.id) + '"' : "") + '>' +
+          '<input type="text" class="pmo-team-name-input" placeholder="Nome do membro da equipe" value="' + (editingMember ? escapeHtml(editingMember.name) : "") + '" />' +
+          '<input type="text" class="pmo-team-role-input" list="pmoTeamRoleOptions" placeholder="Cargo (selecione ou digite)" value="' + (editingMember ? escapeHtml(editingMember.role || "") : "") + '" />' +
+          '<label class="pmo-photo-btn" title="Escolher foto (opcional)">📷<input type="file" accept="image/*" class="pmo-team-photo-input" hidden /></label>' +
+          (editingMember
+            ? '<button type="button" class="btn subtle pmo-team-add-btn" data-save-team-member="' + escapeHtml(label) + '">Salvar edição</button>' +
+              '<button type="button" class="pmo-team-form-cancel" data-cancel-team-edit>Cancelar</button>'
+            : '<button type="button" class="btn subtle pmo-team-add-btn" data-add-team-member="' + escapeHtml(label) + '">+ Adicionar</button>') +
+          "</div>"
+        : "") +
       "</div>"
     );
   }
@@ -5042,6 +5047,7 @@
 
     panels.querySelectorAll("[data-add-team-member]").forEach(function (btn) {
       btn.addEventListener("click", function () {
+        if (!isAdmin()) return;
         var label = btn.getAttribute("data-add-team-member");
         var form = btn.closest("[data-team-form]");
         if (!form) return;
@@ -5079,6 +5085,7 @@
 
     panels.querySelectorAll("[data-edit-team-member]").forEach(function (btn) {
       btn.addEventListener("click", function () {
+        if (!isAdmin()) return;
         var label = btn.getAttribute("data-team-label");
         var id = btn.getAttribute("data-edit-team-member");
         editingTeamMember = { label: label, id: id };
@@ -5095,6 +5102,7 @@
 
     panels.querySelectorAll("[data-save-team-member]").forEach(function (btn) {
       btn.addEventListener("click", function () {
+        if (!isAdmin()) return;
         var label = btn.getAttribute("data-save-team-member");
         var form = btn.closest("[data-team-form]");
         if (!form) return;
@@ -5138,6 +5146,7 @@
 
     panels.querySelectorAll("[data-remove-team-member]").forEach(function (btn) {
       btn.addEventListener("click", function () {
+        if (!isAdmin()) return;
         var label = btn.getAttribute("data-team-label");
         var id = btn.getAttribute("data-remove-team-member");
         if (state.pmoTeams && Array.isArray(state.pmoTeams[label])) {
